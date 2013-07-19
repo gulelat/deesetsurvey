@@ -53,9 +53,6 @@ public class Login extends Activity {
 								.equals(content.getAsString("password")) == true) {
 					Intent intent = new Intent(Login.this, SelectStore.class);
 					putIntentValues(intent, content.getAsString("userid"));
-					if (mDB != null) {
-						mDB.close();
-					}
 					startActivity(intent);
 					break;
 				}
@@ -63,9 +60,6 @@ public class Login extends Activity {
 			if (i == arlAllUser.size()) {
 				Toast.makeText(Login.this, "Username or password incorrect!",
 						Toast.LENGTH_SHORT).show();
-			}
-			if (mDB != null) {
-				mDB.close();
 			}
 		}
 	}

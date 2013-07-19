@@ -2,20 +2,30 @@ package com.deeset.deesetsurvey;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import com.deeset.deesetsurvey.controller.DrawSomethingView;
 import com.deeset.deesetsurvey.controller.DynamicViews;
 import com.deeset.deesetsurvey.controller.SurveyQuestion;
 import com.deeset.deesetsurvey.model.DBAdapter;
+import com.deeset.deesetsurvey.controller.UploadFile;
+
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.ProgressDialog;
 import android.content.ContentValues;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
@@ -23,6 +33,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
@@ -61,6 +72,11 @@ public class FieldSurvey extends Activity {
 	private String mStrSurveyId;
 	private String mStrSurveyName;
 	private String mStrUserId;
+	private String mStrPathPhoto = "";
+	private String mStrPathSign = "";
+	private String mStrPathSQL = "";
+	private String mStrUsername = "";
+	private String mStrTimestamp = "";
 	private AtomicInteger mAtomicInt;
 	private int mIntCamareGalleryResult;
 	private int CAMERA_RESULT = 12345;
@@ -250,11 +266,12 @@ public class FieldSurvey extends Activity {
 		dialog.setPositiveButton("OK", new DialogInterface.OnClickListener() {
 			// do something when the button is clicked
 			public void onClick(DialogInterface dialog, int arg1) {
-				String strPath = drawView.getScreen(view, "signature");
-				updateAnsSurvey(intIndex, strPath);
-				File file = new File(strPath);
+				mStrPathSign = drawView.getScreen(view, "signature");
+				updateAnsSurvey(intIndex, mStrPathSign);
+				File file = new File(mStrPathSign);
 				if (file.exists()) {
-					imgView.setImageBitmap(BitmapFactory.decodeFile(strPath));
+					imgView.setImageBitmap(BitmapFactory
+							.decodeFile(mStrPathSign));
 				}
 				dialog.dismiss();
 			}
@@ -278,8 +295,7 @@ public class FieldSurvey extends Activity {
 		sur.setmArrLstAns(arrlstAns);
 		mArrLstSurCont.remove(intIndex);
 		mArrLstSurCont.add(intIndex, sur);
-		Log.i("Answer",
-				mArrLstSurCont.get(intIndex).getmArrLstAns().get(0));
+		Log.i("Answer", mArrLstSurCont.get(intIndex).getmArrLstAns().get(0));
 	}
 
 	private void loadButton(SurveyQuestion surQues, final int intIndex) {
@@ -293,7 +309,7 @@ public class FieldSurvey extends Activity {
 		mLiLayFieldSurvey.addView(img);
 		LinearLayout llayout = new LinearLayout(this);
 		LinearLayout llayoutCamera = new LinearLayout(this);
-		Button btnCamera = mDynaViews.initialButton(128, 64, "Camera");
+		Button btnCamera = mDynaViews.initialButton(160, 64, "Camera");
 		btnCamera.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View v) {
@@ -303,7 +319,7 @@ public class FieldSurvey extends Activity {
 				startActivityForResult(cameraIntent, CAMERA_RESULT);
 			}
 		});
-		Button btnGallery = mDynaViews.initialButton(128, 64, "Gallery");
+		Button btnGallery = mDynaViews.initialButton(160, 64, "Gallery");
 		btnGallery.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View v) {
@@ -386,26 +402,13 @@ public class FieldSurvey extends Activity {
 	}
 
 	public void submitSurveyQuestions(View v) {
-		mArrlstAnswer.clear();
-		for (int i = 0; i < mArrLstSurCont.size(); i++) {
-			if (checkValueView(mArrLstSurCont.get(i)) == false) {
-				Toast.makeText(FieldSurvey.this,
-						"Please answer the questions!", Toast.LENGTH_SHORT)
-						.show();
-				return;
-			}
+		ContentValues content = mDB.queryUserById(mStrUserId);
+		if (content.getAsString("username") != null) {
+			mStrUsername = content.getAsString("username");
+			mStrTimestamp = String.valueOf(Calendar.getInstance()
+					.getTimeInMillis());
+			new SendSurvey(this).execute();
 		}
-
-		Log.i("Answers", mArrlstAnswer.toString());
-		Log.i("Question Contain", mArrLstSurCont.size() + "");
-		for (int i = 0; i < mArrLstSurCont.size(); i++) {
-			insertAnswerDB((i + 1), mArrLstSurCont.get(i).getmStrQuesCont(),
-					mArrlstAnswer.get(i));
-		}
-
-		Intent intent = new Intent(FieldSurvey.this, SubmittedResult.class);
-		putIntentValues(intent);
-		startActivity(intent);
 	}
 
 	private void insertAnswerDB(int intSeqNum, String strQuesCont,
@@ -453,7 +456,31 @@ public class FieldSurvey extends Activity {
 		if (surveyQuestion.getmStrType().equals("7")) {
 			return checkEditText(surveyQuestion);
 		}
+		if (surveyQuestion.getmStrType().equals("9")) {
+			return checkTakePhoto(surveyQuestion);
+		}
+		if (surveyQuestion.getmStrType().equals("11")) {
+			return checkSignature(surveyQuestion);
+		}
 		return true;
+	}
+
+	private boolean checkSignature(SurveyQuestion surveyQuestion) {
+		if (mStrPathSign.equals("")) {
+			return false;
+		} else {
+			mArrlstAnswer.add(mStrPathSign);
+			return true;
+		}
+	}
+
+	private boolean checkTakePhoto(SurveyQuestion surveyQuestion) {
+		if (mStrPathPhoto.equals("")) {
+			return false;
+		} else {
+			mArrlstAnswer.add(mStrPathPhoto);
+			return true;
+		}
 	}
 
 	private boolean checkCheckBox(SurveyQuestion surveyQuestion) {
@@ -503,12 +530,12 @@ public class FieldSurvey extends Activity {
 
 	private boolean checkSpinner(SurveyQuestion surveyQuestion) {
 		Spinner spin = (Spinner) findViewById(surveyQuestion.getmIntId());
-		if (spin.getSelectedItemPosition() == 0) {
-			return false;
-		} else {
-			mArrlstAnswer.add(spin.getSelectedItem().toString());
-			return true;
-		}
+		// if (spin.getSelectedItemPosition() == 0) {
+		// return false;
+		// } else {
+		mArrlstAnswer.add(spin.getSelectedItem().toString());
+		return true;
+		// }
 	}
 
 	public void logoutMainMenu(View v) {
@@ -541,10 +568,10 @@ public class FieldSurvey extends Activity {
 				Bitmap thumbnail = (Bitmap) data.getExtras().get("data");
 				ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 				thumbnail.compress(Bitmap.CompressFormat.PNG, 100, bytes);
-				String strPath = Environment.getExternalStorageDirectory()
+				mStrPathPhoto = Environment.getExternalStorageDirectory()
 						+ File.separator + "DCIM/Camera/"
 						+ Calendar.getInstance().getTimeInMillis() + ".png";
-				File f = new File(strPath);
+				File f = new File(mStrPathPhoto);
 				try {
 					f.createNewFile();
 					FileOutputStream fo = new FileOutputStream(f);
@@ -554,8 +581,8 @@ public class FieldSurvey extends Activity {
 					e.printStackTrace();
 				}
 				ImageView img = (ImageView) findViewById(mIntCamareGalleryResult);
-				img.setImageBitmap(BitmapFactory.decodeFile(strPath));
-				updateAnsSurvey(CAMERA_RESULT, strPath);
+				img.setImageBitmap(BitmapFactory.decodeFile(mStrPathPhoto));
+				updateAnsSurvey(CAMERA_RESULT, mStrPathPhoto);
 				CAMERA_RESULT = 12345;
 			} else {
 				Toast.makeText(this, "Please choose an capture image",
@@ -570,16 +597,196 @@ public class FieldSurvey extends Activity {
 						filePathColumn, null, null, null);
 				cursor.moveToFirst();
 				int columnIndex = cursor.getColumnIndex(filePathColumn[0]);
-				String strPath = cursor.getString(columnIndex);
+				mStrPathPhoto = cursor.getString(columnIndex);
 				cursor.close();
 				ImageView img = (ImageView) findViewById(mIntCamareGalleryResult);
-				img.setImageBitmap(BitmapFactory.decodeFile(strPath));
-				updateAnsSurvey(GALLERY_RESULT, strPath);
+				img.setImageBitmap(BitmapFactory.decodeFile(mStrPathPhoto));
+				updateAnsSurvey(GALLERY_RESULT, mStrPathPhoto);
 				GALLERY_RESULT = 54321;
 			} else {
 				Toast.makeText(this, "Please choose an image",
 						Toast.LENGTH_SHORT).show();
 			}
 		}
+	}
+
+	public class SendSurvey extends AsyncTask<String, Integer, String> {
+
+		private Context mCtx;
+		private ProgressDialog mProgress;
+		private ArrayList<String> mAlstTitle, mAlstContent;
+
+		public SendSurvey(Context ctx) {
+			mCtx = ctx;
+			mProgress = new ProgressDialog(mCtx);
+		}
+
+		@Override
+		protected void onPreExecute() {
+			mProgress.setIcon(android.R.drawable.stat_sys_upload);
+			mProgress.setTitle("Upload data");
+			mProgress.setMessage("Uploading...");
+			mProgress.setCancelable(false);
+			mProgress.setCanceledOnTouchOutside(false);
+			mProgress.show();
+			super.onPreExecute();
+		}
+
+		@Override
+		protected String doInBackground(String... params) {
+			mArrlstAnswer.clear();
+			for (int i = 0; i < mArrLstSurCont.size(); i++) {
+				if (checkValueView(mArrLstSurCont.get(i)) == false) {
+					return "fill full answers";
+				}
+			}
+
+			Log.i("Answers", mArrlstAnswer.toString());
+			Log.i("Question Contain", mArrLstSurCont.size() + "");
+			for (int i = 0; i < mArrLstSurCont.size(); i++) {
+				insertAnswerDB((i + 1),
+						mArrLstSurCont.get(i).getmStrQuesCont(),
+						mArrlstAnswer.get(i));
+			}
+
+			exportData();
+
+			String strResult;
+			do {
+				strResult = uploadFile(mStrPathSQL);
+			} while (strResult.equals("fail") == true);
+			
+			do {
+				strResult = uploadFile(mStrPathSign);
+			} while (strResult.equals("fail") == true);
+			
+			do {
+				strResult = uploadFile(mStrPathPhoto);
+			} while (strResult.equals("fail") == true);
+			
+			return "error";
+		}
+
+		private String uploadFile(String strPath) {
+			if (strPath.equals("") == false) {
+				File fileUpload = new File(strPath);
+				if (fileUpload.exists()) {
+					UploadFile upload = new UploadFile(mCtx, mStrUsername,
+							mStrTimestamp);
+					upload.execute(strPath);
+					try {
+						if (upload.get(60, TimeUnit.SECONDS)) {
+							Log.i("Upload", "Successful!");
+							return "success";
+						}
+					} catch (InterruptedException e) {
+						Log.i("InterruptedException Data", e.getMessage());
+					} catch (ExecutionException e) {
+						Log.i("ExecutionException Data", e.getMessage());
+					} catch (TimeoutException e) {
+						return "fail";
+					}
+				}
+			}
+			return "Not found";
+		}
+
+		private void exportData() {
+			Log.i("Write file", "Start");
+			StringBuffer strData = new StringBuffer();
+			strData.append("INSERT INTO deesetsurvey('");
+			mAlstTitle = new ArrayList<String>();
+			addArrayTitle(mArrLstSurCont.size());
+			for (int i = 0; i < mAlstTitle.size() - 1; i++) {
+				strData.append(mAlstTitle.get(i) + "', '");
+			}
+			strData.append(mAlstTitle.get(mAlstTitle.size() - 1)
+					+ "') VALUES ('");
+
+			mAlstContent = new ArrayList<String>();
+			addArrayContent(mArrLstSurCont.size());
+			for (int i = 0; i < mAlstContent.size() - 1; i++) {
+				strData.append(mAlstContent.get(i) + "', '");
+			}
+			strData.append(mAlstContent.get(mAlstContent.size() - 1) + "');");
+
+			mStrPathSQL = Environment.getExternalStorageDirectory().toString()
+					+ "/DCMI";
+			File fileSQL = new File(mStrPathSQL);
+			if (!fileSQL.exists()) {
+				fileSQL.mkdir();
+			}
+			fileSQL = new File(mStrPathSQL, "survey.txt");
+			mStrPathSQL += File.separator + "survey.txt";
+
+			FileOutputStream fos;
+			try {
+				fos = new FileOutputStream(fileSQL);
+				OutputStreamWriter osw = new OutputStreamWriter(fos);
+				osw.write(strData.toString());
+				osw.flush();
+				osw.close();
+				Log.i("Write file", "Done");
+			} catch (FileNotFoundException e) {
+				Log.i("FileNotFoundException", e.getMessage());
+			} catch (IOException e) {
+				Log.i("IOException", e.getMessage());
+			}
+		}
+
+		private void addArrayContent(int intContSize) {
+			mAlstContent.add(mStrChainId);
+			mAlstContent.add(mStrStoreId);
+			mAlstContent.add(mStrSurveyId);
+			for (int i = 0; i < intContSize; i++) {
+				mAlstContent.add(mArrLstSurCont.get(i).getmStrQuesCont());
+				if (mArrLstSurCont.get(i).getmStrType().equals("9")) {
+					String strArray[] = mStrPathPhoto.split("/");
+					mAlstContent
+							.add("ftp://deeset\\mobileorders@81.171.198.188/mobileorders/"
+									+ mStrUsername
+									+ "-"
+									+ mStrTimestamp
+									+ "-" + strArray[strArray.length-1]);
+				} else {
+					if (mArrLstSurCont.get(i).getmStrType().equals("11")) {
+						mAlstContent
+								.add("ftp://deeset\\mobileorders@81.171.198.188/mobileorders/"
+										+ mStrUsername
+										+ "-"
+										+ mStrTimestamp
+										+ "-signature.png");
+					} else {
+						mAlstContent.add(mArrlstAnswer.get(i));
+					}
+				}
+			}
+		}
+
+		private void addArrayTitle(int intContSize) {
+			mAlstTitle.add(0, "chainid");
+			mAlstTitle.add(1, "storeid");
+			mAlstTitle.add(2, "surveyid");
+
+			for (int i = 3, j = 1; i < intContSize * 2 + 3; i += 2, j++) {
+				mAlstTitle.add(i, "Ques" + j);
+				mAlstTitle.add(i + 1, "Ans" + j);
+			}
+		}
+
+		@Override
+		protected void onPostExecute(String result) {
+			mProgress.dismiss();
+			if (result.equals("fill full answers")) {
+				Toast.makeText(mCtx, "Please answer the questions!",
+						Toast.LENGTH_SHORT).show();
+			} else {
+				Intent intent = new Intent(mCtx, SubmittedResult.class);
+				putIntentValues(intent);
+				mCtx.startActivity(intent);
+			}
+			super.onPostExecute(result);
+		}
+
 	}
 }
