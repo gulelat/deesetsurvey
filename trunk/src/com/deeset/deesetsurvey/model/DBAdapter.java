@@ -196,6 +196,18 @@ public class DBAdapter {
 		cur.close();
 		return allTask;
 	}
+	
+	public ContentValues queryUserById(String strUserId) {
+		Cursor cur = mDB.query("TblLogin", null, "userid='" + strUserId + "'", null, null, null, null);
+		cur.moveToFirst();
+		while (cur.isAfterLast() == false) {
+			content = new ContentValues();
+			getContentLogin(cur);
+			cur.moveToNext();
+		}
+		cur.close();
+		return content;
+	}
 
 	public int countSubmittedResult(String strUserId, String strChain,
 			String strStore, String strSurvey) {
