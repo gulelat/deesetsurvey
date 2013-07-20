@@ -2,10 +2,14 @@ package com.deeset.deesetsurvey.controller;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.SocketException;
+
 import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
+
 import android.content.Context;
 import android.os.AsyncTask;
 import android.util.Log;
@@ -40,8 +44,24 @@ public class UploadFile extends AsyncTask<String, Integer, Boolean> {
             Log.i("File name", strFileName);
             
             mFTP.storeFile(strFileName, ifile);
+            
+            File fileTest = new File("/mnt/sdcard/DCMI/test.txt");
+            FileOutputStream desFileStream = new FileOutputStream(fileTest);
+            boolean status = mFTP.retrieveFile(strFileName, desFileStream);
+            desFileStream.close();
+            
+            if (status) {
+            	if (fileTest.length() != file.length()) {
+            		Log.i("Upload", "Error");
+            		mFTP.disconnect();
+            		return false;
+            	} else {
+            		fileTest.delete();
+            		Log.i("Upload", "Done");
+            	}
+            }
+            
             mFTP.disconnect();
-            Log.i("Upload", "Done");
             return true;
         } catch (SocketException e) {
             Log.i("SocketException", e.getMessage());

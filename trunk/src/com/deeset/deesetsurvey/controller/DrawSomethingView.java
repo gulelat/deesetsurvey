@@ -130,7 +130,6 @@ public class DrawSomethingView extends View {
 	}
 
 	public String getScreen(View layout, String strSignName) {
-		String strPath = "";
 		File myPath;
 
 		View ve = layout;
@@ -151,16 +150,12 @@ public class DrawSomethingView extends View {
 			b.compress(Bitmap.CompressFormat.PNG, 100, fos);
 			fos.flush();
 			fos.close();
-			MediaStore.Images.Media.insertImage(ctx.getContentResolver(), b,
-					"Screen", "screen");
-			strPath = myPath.getPath();
-			Log.i("path", strPath);
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		return strPath;
+		return myPath.getPath();
 	}
 
 }

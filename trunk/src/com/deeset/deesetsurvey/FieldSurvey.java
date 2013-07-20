@@ -32,6 +32,7 @@ import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -73,10 +74,12 @@ public class FieldSurvey extends Activity {
 	private String mStrSurveyName;
 	private String mStrUserId;
 	private String mStrPathPhoto = "";
+	private String mStrPathPhotoUpload = "";
 	private String mStrPathSign = "";
 	private String mStrPathSQL = "";
 	private String mStrUsername = "";
 	private String mStrTimestamp = "";
+	private boolean mBlnCamera, mBlPhoto = false;
 	private AtomicInteger mAtomicInt;
 	private int mIntCamareGalleryResult;
 	private int CAMERA_RESULT = 12345;
@@ -90,7 +93,8 @@ public class FieldSurvey extends Activity {
 		requestWindowFeature(Window.FEATURE_NO_TITLE);
 		getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
 				WindowManager.LayoutParams.FLAG_FULLSCREEN);
-
+		Window window = getWindow();
+		window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 		setContentView(R.layout.fieldsurvey);
 
 		initialViews();
@@ -557,6 +561,13 @@ public class FieldSurvey extends Activity {
 	@Override
 	protected void onResume() {
 		mDB.open();
+		if (mStrPathPhoto.equals("") == false) {
+			File file = new File(mStrPathPhoto);
+			if (file.exists()) {
+				ImageView img = (ImageView) findViewById(mIntCamareGalleryResult);
+				img.setImageBitmap(BitmapFactory.decodeFile(mStrPathPhoto));
+			}
+		}
 		super.onResume();
 	}
 
@@ -565,23 +576,22 @@ public class FieldSurvey extends Activity {
 		super.onActivityResult(requestCode, resultCode, data);
 		if (requestCode == CAMERA_RESULT) {
 			if (null != data && resultCode == RESULT_OK) {
-				Bitmap thumbnail = (Bitmap) data.getExtras().get("data");
-				ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-				thumbnail.compress(Bitmap.CompressFormat.PNG, 100, bytes);
-				mStrPathPhoto = Environment.getExternalStorageDirectory()
-						+ File.separator + "DCIM/Camera/"
-						+ Calendar.getInstance().getTimeInMillis() + ".png";
-				File f = new File(mStrPathPhoto);
-				try {
-					f.createNewFile();
-					FileOutputStream fo = new FileOutputStream(f);
-					fo.write(bytes.toByteArray());
-					fo.close();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
+				mBlnCamera = true;
+				mBlPhoto = true;
+
 				ImageView img = (ImageView) findViewById(mIntCamareGalleryResult);
-				img.setImageBitmap(BitmapFactory.decodeFile(mStrPathPhoto));
+				if (mStrPathPhoto.equals("") == false) {
+					img.setImageBitmap(null);
+				}
+
+				Uri selectedImage = data.getData();
+				String[] filePathColumn = { MediaStore.Images.Media.DATA };
+				Cursor cursor = getContentResolver().query(selectedImage,
+						filePathColumn, null, null, null);
+				cursor.moveToFirst();
+				int columnIndex = cursor.getColumnIndex(filePathColumn[0]);
+				mStrPathPhoto = cursor.getString(columnIndex);
+				cursor.close();
 				updateAnsSurvey(CAMERA_RESULT, mStrPathPhoto);
 				CAMERA_RESULT = 12345;
 			} else {
@@ -591,6 +601,14 @@ public class FieldSurvey extends Activity {
 		}
 		if (requestCode == GALLERY_RESULT) {
 			if (null != data && resultCode == RESULT_OK) {
+				mBlnCamera = false;
+				mBlPhoto = true;
+
+				ImageView img = (ImageView) findViewById(mIntCamareGalleryResult);
+				if (mStrPathPhoto.equals("") == false) {
+					img.setImageBitmap(null);
+				}
+
 				Uri selectedImage = data.getData();
 				String[] filePathColumn = { MediaStore.Images.Media.DATA };
 				Cursor cursor = getContentResolver().query(selectedImage,
@@ -599,8 +617,6 @@ public class FieldSurvey extends Activity {
 				int columnIndex = cursor.getColumnIndex(filePathColumn[0]);
 				mStrPathPhoto = cursor.getString(columnIndex);
 				cursor.close();
-				ImageView img = (ImageView) findViewById(mIntCamareGalleryResult);
-				img.setImageBitmap(BitmapFactory.decodeFile(mStrPathPhoto));
 				updateAnsSurvey(GALLERY_RESULT, mStrPathPhoto);
 				GALLERY_RESULT = 54321;
 			} else {
@@ -608,6 +624,37 @@ public class FieldSurvey extends Activity {
 						Toast.LENGTH_SHORT).show();
 			}
 		}
+	}
+
+	private String resizePhoto(String strPath) {
+		File file = new File(strPath);
+		if (file.exists()) {
+			Bitmap bitmap = new BitmapFactory().decodeFile(strPath);
+
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			bitmap.compress(Bitmap.CompressFormat.JPEG, 30, bytes);
+
+			File path = new File(Environment.getExternalStorageDirectory()
+					+ File.separator + "DCMI");
+			if (!path.exists()) {
+				path.mkdir();
+			}
+			String strNewPath = path.getPath() + "/photo.jpg";
+
+			File f = new File(strNewPath);
+			try {
+				f.createNewFile();
+				FileOutputStream fo = new FileOutputStream(f);
+				fo.write(bytes.toByteArray());
+
+				fo.close();
+				return strNewPath;
+			} catch (IOException e) {
+				e.printStackTrace();
+				return "";
+			}
+		}
+		return "";
 	}
 
 	public class SendSurvey extends AsyncTask<String, Integer, String> {
@@ -633,6 +680,15 @@ public class FieldSurvey extends Activity {
 		}
 
 		@Override
+		protected void onProgressUpdate(Integer... values) {
+			if (mBlPhoto) {
+				ImageView img = (ImageView) findViewById(mIntCamareGalleryResult);
+				img.setImageBitmap(null);
+			}
+			super.onProgressUpdate(values);
+		}
+
+		@Override
 		protected String doInBackground(String... params) {
 			mArrlstAnswer.clear();
 			for (int i = 0; i < mArrLstSurCont.size(); i++) {
@@ -640,6 +696,8 @@ public class FieldSurvey extends Activity {
 					return "fill full answers";
 				}
 			}
+
+			publishProgress(0);
 
 			Log.i("Answers", mArrlstAnswer.toString());
 			Log.i("Question Contain", mArrLstSurCont.size() + "");
@@ -655,16 +713,39 @@ public class FieldSurvey extends Activity {
 			do {
 				strResult = uploadFile(mStrPathSQL);
 			} while (strResult.equals("fail") == true);
-			
+
 			do {
 				strResult = uploadFile(mStrPathSign);
 			} while (strResult.equals("fail") == true);
-			
+
+			resizePhotoUpload();
+
 			do {
-				strResult = uploadFile(mStrPathPhoto);
+				strResult = uploadFile(mStrPathPhotoUpload);
 			} while (strResult.equals("fail") == true);
-			
+
+			File file = new File(mStrPathPhotoUpload);
+			if (file.exists()) {
+				file.delete();
+				mStrPathPhotoUpload = "";
+			}
+
 			return "error";
+		}
+
+		private void resizePhotoUpload() {
+			if (mBlnCamera) {
+				do {
+					mStrPathPhotoUpload = resizePhoto(mStrPathPhoto);
+				} while (mStrPathPhotoUpload.equals(""));
+			} else {
+				File file = new File(mStrPathPhoto);
+				if (file.length() > 400000) {
+					do {
+						mStrPathPhotoUpload = resizePhoto(mStrPathPhoto);
+					} while (mStrPathPhotoUpload.equals(""));
+				}
+			}
 		}
 
 		private String uploadFile(String strPath) {
@@ -678,6 +759,8 @@ public class FieldSurvey extends Activity {
 						if (upload.get(60, TimeUnit.SECONDS)) {
 							Log.i("Upload", "Successful!");
 							return "success";
+						} else {
+							return "fail";
 						}
 					} catch (InterruptedException e) {
 						Log.i("InterruptedException Data", e.getMessage());
@@ -747,7 +830,7 @@ public class FieldSurvey extends Activity {
 									+ mStrUsername
 									+ "-"
 									+ mStrTimestamp
-									+ "-" + strArray[strArray.length-1]);
+									+ "-photo.jpg");
 				} else {
 					if (mArrLstSurCont.get(i).getmStrType().equals("11")) {
 						mAlstContent

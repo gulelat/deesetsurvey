@@ -280,11 +280,9 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 		
 		@Override
 		protected Boolean doInBackground(String... params) {
-			mDB.close();
 			mIntVersion = getIntPref(mSharedPref, "versionDB", 1);
 			mIntVersion++;
 			setIntPref(mSharedPref, "versionDB", mIntVersion);
-			mDB.open();
 			return true;
 		}
 
