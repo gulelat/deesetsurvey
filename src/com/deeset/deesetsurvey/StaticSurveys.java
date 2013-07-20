@@ -108,33 +108,13 @@ public class StaticSurveys extends Activity implements OnClickListener {
 	}
 
 	public void changeStore(View v) {
-		if (mDB != null) {
-			mDB.close();
-		}
 		startActivity(new Intent(StaticSurveys.this, SelectStore.class)
 				.putExtra("userid", mStrUserId));
 		finish();
 	}
 
 	public void logoutApp(View v) {
-		if (mDB != null) {
-			mDB.close();
-		}
 		startActivity(new Intent(this, Login.class));
-	}
-
-	@Override
-	protected void onPause() {
-		if (mDB != null) {
-			mDB.close();
-		}
-		super.onPause();
-	}
-
-	@Override
-	protected void onResume() {
-		mDB.open();
-		super.onResume();
 	}
 
 	@Override
@@ -145,9 +125,6 @@ public class StaticSurveys extends Activity implements OnClickListener {
 				putIntentValues(intent, mArrLstSurveyId.get(i),
 						mArrLstSurvey.get(i));
 			}
-		}
-		if (mDB != null) {
-			mDB.close();
 		}
 		startActivity(intent);
 	}
