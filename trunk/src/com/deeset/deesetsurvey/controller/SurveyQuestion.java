@@ -8,6 +8,7 @@ public class SurveyQuestion {
 	private ArrayList<Integer> mIntIdChild;
 	private String mStrType;
 	private String mStrQuesCont;
+	private String mStrQuesId;
 	private ArrayList<String> mArrLstAns;
 
 	public String getmStrType() {
@@ -59,6 +60,14 @@ public class SurveyQuestion {
 		strBuff.append(mStrType + "#@#");
 		strBuff.append(mArrLstAns + "@#@");
 		return strBuff.toString();
+	}
+
+	public String getmStrQuesId() {
+		return mStrQuesId;
+	}
+
+	public void setmStrQuesId(String mStrQuesId) {
+		this.mStrQuesId = mStrQuesId;
 	}
 
 }

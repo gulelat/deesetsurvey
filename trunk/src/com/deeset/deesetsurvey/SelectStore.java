@@ -1,27 +1,16 @@
 package com.deeset.deesetsurvey;
 
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLConnection;
 import java.util.ArrayList;
-import com.deeset.deesetsurvey.model.DBAdapter;
+
+import org.ksoap2.serialization.SoapObject;
+
 import android.app.Activity;
 import android.app.ProgressDialog;
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -31,100 +20,90 @@ import android.widget.ArrayAdapter;
 import android.widget.Spinner;
 import android.widget.Toast;
 
+import com.deeset.deesetsurvey.controller.ConnectionDetector;
+import com.deeset.deesetsurvey.model.JDBCAdapter;
+
 public class SelectStore extends Activity implements OnItemSelectedListener {
 
-	private DBAdapter mDB;
 	private Spinner mSpinChain;
 	private Spinner mSpinStore;
-	private ArrayAdapter<String> mArrAdapterChain;
-	private ArrayAdapter<String> mArrAdapterStore;
-	private ArrayList<String> mArrLstChain;
-	private ArrayList<String> mArrLstChainId;
-	private ArrayList<String> mArrLstStore;
-	private ArrayList<String> mArrLstStoreId;
-	private String mStrUserId;
-	private String mStrStoreId;
-	private String mStrChainId;
 
-	private SharedPreferences mSharedPref;
-	private int mIntVersion;
+	private ArrayAdapter<String> mAdapterChain;
+	private ArrayAdapter<String> mAdapterStore;
+
+	private ArrayList<String> mAlstChain;
+	private ArrayList<String> mAlstChainId;
+	private ArrayList<String> mAlstStore;
+	private ArrayList<String> mAlstStoreId;
+
+	private String mStrUserId;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-
-		// get full screen and no title
 		requestWindowFeature(Window.FEATURE_NO_TITLE);
 		getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
 				WindowManager.LayoutParams.FLAG_FULLSCREEN);
-
 		setContentView(R.layout.selectchainstore);
 
-		initialConnectDB();
 		initialViews();
+		initialData();
 		getIntentValues();
+	}
+
+	private void initialViews() {
+		mSpinChain = (Spinner) findViewById(R.id.spinSelectChain);
+		mSpinStore = (Spinner) findViewById(R.id.spinSelectStore);
+	}
+
+	private void initialData() {
+		getIntentValues();
+
+		mAlstChain = new ArrayList<String>();
+		mAlstChainId = new ArrayList<String>();
+		loadDataChain();
+		mAdapterChain = new ArrayAdapter<String>(SelectStore.this,
+				android.R.layout.simple_spinner_item, mAlstChain);
+		mAdapterChain
+				.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+		mSpinChain.setAdapter(mAdapterChain);
+		mSpinChain.setOnItemSelectedListener(this);
+
+		mAlstStore = new ArrayList<String>();
+		mAlstStoreId = new ArrayList<String>();
+		loadDataStore(0);
+		mAdapterStore = new ArrayAdapter<String>(SelectStore.this,
+				android.R.layout.simple_spinner_item, mAlstStore);
+		mAdapterStore
+				.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+		mSpinStore.setAdapter(mAdapterStore);
+		mSpinStore.setOnItemSelectedListener(this);
 	}
 
 	private void getIntentValues() {
 		mStrUserId = getIntent().getStringExtra("userid");
 	}
 
-	private void initialViews() {
-		mArrLstChain = new ArrayList<String>();
-		mArrLstChainId = new ArrayList<String>();
-		mSpinChain = (Spinner) findViewById(R.id.spinSelectChain);
-		loadDataChain();
-		mArrAdapterChain = new ArrayAdapter<String>(SelectStore.this,
-				android.R.layout.simple_spinner_item, mArrLstChain);
-		mArrAdapterChain
-				.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-		mSpinChain.setAdapter(mArrAdapterChain);
-		mSpinChain.setOnItemSelectedListener(this);
-
-		mArrLstStore = new ArrayList<String>();
-		mArrLstStoreId = new ArrayList<String>();
-		mSpinStore = (Spinner) findViewById(R.id.spinSelectStore);
-		loadDataStore(0);
-		mArrAdapterStore = new ArrayAdapter<String>(SelectStore.this,
-				android.R.layout.simple_spinner_item, mArrLstStore);
-		mArrAdapterStore
-				.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-		mSpinStore.setAdapter(mArrAdapterStore);
-		mSpinStore.setOnItemSelectedListener(this);
-	}
-
 	private void loadDataStore(int intIndex) {
-		mArrLstStore.add("Select Store");
-		mArrLstStoreId.add("0");
-		ArrayList<ContentValues> arrlstStores = mDB
-				.queryStoresByChain(mArrLstChainId.get(intIndex));
-		for (int i = 0; i < arrlstStores.size(); i++) {
-			mArrLstStore.add(arrlstStores.get(i).getAsString("StoreName"));
-			mArrLstStoreId.add(arrlstStores.get(i).getAsString("StoreID"));
+		mAlstStore.add("Select Store");
+		mAlstStoreId.add("-1");
+		if (intIndex != 0 && mAlstChainId.size() > intIndex) {
+			InteractServer actServer = new InteractServer(this,
+					"Get store data", JDBCAdapter.METHOD_GETSTOREDATA);
+			actServer.addParam(JDBCAdapter.TYPE_INTEGER, "ChainID",
+					mAlstChainId.get(intIndex));
+			actServer.execute();
 		}
 	}
 
 	private void loadDataChain() {
-		mArrLstChain.add("Select Chain");
-		mArrLstChainId.add("-1");
-		ArrayList<ContentValues> arrlstChains = mDB.queryChains();
-		for (int i = 0; i < arrlstChains.size(); i++) {
-			mArrLstChain.add(arrlstChains.get(i).getAsString("ChainName"));
-			mArrLstChainId.add(arrlstChains.get(i).getAsString("ChainID"));
+		mAlstChain.add("Select Chain");
+		mAlstChainId.add("-1");
+		if (mStrUserId != null) {
+			InteractServer actServer = new InteractServer(this,
+					"Get chain data", JDBCAdapter.METHOD_GETCHAINDATA);
+			actServer.execute();
 		}
-	}
-
-	private void initialConnectDB() {
-		mDB = new DBAdapter(SelectStore.this);
-		mDB.open();
-		mSharedPref = getSharedPreferences("UpdateDBPref", Context.MODE_PRIVATE);
-	}
-
-	private void putIntentValues(Intent intent) {
-		intent.putExtra("chainid", mStrChainId);
-		intent.putExtra("storeid", mStrStoreId);
-		intent.putExtra("storename", mSpinStore.getSelectedItem().toString());
-		intent.putExtra("userid", mStrUserId);
 	}
 
 	public void submitChainStoreSurvey(View v) {
@@ -140,11 +119,19 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 		}
 	}
 
+	private void putIntentValues(Intent intent) {
+		Log.i("StoreID", mAlstStoreId.get(mSpinStore.getSelectedItemPosition()));
+		intent.putExtra("storeid",
+				mAlstStoreId.get(mSpinStore.getSelectedItemPosition()));
+		intent.putExtra("storename", mSpinStore.getSelectedItem().toString());
+		intent.putExtra("userid", mStrUserId);
+	}
+
 	public void resetChainSurvey(View v) {
 		mSpinChain.setSelection(0);
-		mArrLstStore.clear();
+		mAlstStore.clear();
 		loadDataStore(0);
-		mArrAdapterStore.notifyDataSetChanged();
+		mAdapterStore.notifyDataSetChanged();
 		mSpinStore.setSelection(0);
 	}
 
@@ -153,14 +140,9 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 			long arg3) {
 		switch (arg0.getId()) {
 		case R.id.spinSelectChain:
-			mStrChainId = mArrLstChainId.get(arg2);
-			mArrLstStore.clear();
+			mAlstStore.clear();
 			loadDataStore(arg2);
-			mArrAdapterStore.notifyDataSetChanged();
-			break;
-		case R.id.spinSelectStore:
-			mStrStoreId = mArrLstStoreId.get(arg2);
-			Log.i("storeid", mArrLstStoreId.get(arg2));
+			mAdapterStore.notifyDataSetChanged();
 			break;
 		default:
 			break;
@@ -172,135 +154,101 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 
 	}
 
-	@Override
-	public boolean onCreateOptionsMenu(Menu menu) {
-		// Inflate the menu; this adds items to the action bar if it is present.
-		getMenuInflater().inflate(R.menu.main, menu);
-		return true;
-	}
+	private class InteractServer extends AsyncTask<String, Integer, String> {
 
-	@Override
-	public boolean onOptionsItemSelected(MenuItem item) {
-		switch (item.getItemId()) {
-		case R.id.action_settings:
-			new Download().execute();
-			break;
-		default:
-			break;
-		}
-		return super.onOptionsItemSelected(item);
-	}
+		private String mStrTitle = "";
+		private String mStrMethod = "";
+		private ArrayList<String> mAlstWS;
 
-	public int getIntPref(SharedPreferences sharedPref, String name, int valrtn) {
-		return sharedPref.getInt(name, valrtn);
-	}
-
-	public void setIntPref(SharedPreferences sharedPref, String name, int value) {
-		SharedPreferences.Editor editor = sharedPref.edit();
-		editor.putInt(name, value);
-		editor.commit();
-	}
-
-	private class Download extends AsyncTask<Void, Integer, String> {
-
-		private ProgressDialog mProDialog = new ProgressDialog(SelectStore.this);
-		private String strURL = "http://m.deeset.co.uk/surveysql/deeset_survey.sql";
-
-		@Override
-		protected String doInBackground(Void... params) {
-			int intCount;
-			try {
-				URL url = new URL(strURL);
-				URLConnection conexion = url.openConnection();
-				conexion.connect();
-
-				int intFileLength = conexion.getContentLength();
-
-				InputStream input = new BufferedInputStream(url.openStream());
-				File file = new File(
-						"data/data/com.deeset.deesetsurvey/deeset_survey.sql");
-				if (file.exists()) {
-					file.delete();
-					Log.i("Delete", "OK");
-				}
-				OutputStream output = new FileOutputStream(file);
-
-				byte data[] = new byte[1024];
-
-				long lngTotal = 0;
-
-				while ((intCount = input.read(data)) != -1) {
-					lngTotal += intCount;
-					publishProgress((int) ((lngTotal * 100) / intFileLength));
-					output.write(data, 0, intCount);
-				}
-
-				output.flush();
-				output.close();
-				input.close();
-			} catch (MalformedURLException e) {
-				e.printStackTrace();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-			return "";
-		}
-
-		@Override
-		protected void onPostExecute(String result) {
-			mProDialog.dismiss();
-			new WebServiceTask(SelectStore.this).execute();
-		}
-
-		@Override
-		protected void onPreExecute() {
-			mProDialog = new ProgressDialog(SelectStore.this);
-			mProDialog.setTitle("Downd file database");
-			mProDialog.setMessage("Downloading...");
-			mProDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
-			mProDialog.setCancelable(false);
-			mProDialog.setCanceledOnTouchOutside(false);
-			mProDialog.show();
-		}
-
-		@Override
-		protected void onProgressUpdate(Integer... values) {
-			mProDialog.setProgress(values[0]);
-		}
-	}
-
-	private class WebServiceTask extends AsyncTask<String, Integer, Boolean> {
-
-		private ProgressDialog mProDialog = new ProgressDialog(SelectStore.this);
 		private Context mCtx;
-		
-		public WebServiceTask(Context ctx) {
+		private JDBCAdapter mJDBC;
+		private ProgressDialog proDialog;
+		private ConnectionDetector conDetect;
+
+		public InteractServer(Context ctx, String strTitle, String strMethod) {
 			mCtx = ctx;
+			mStrTitle = strTitle;
+			mStrMethod = strMethod;
+			mJDBC = new JDBCAdapter();
+			conDetect = new ConnectionDetector(mCtx);
+			mAlstWS = new ArrayList<String>();
 		}
-		
-		@Override
-		protected Boolean doInBackground(String... params) {
-			mIntVersion = getIntPref(mSharedPref, "versionDB", 1);
-			mIntVersion++;
-			setIntPref(mSharedPref, "versionDB", mIntVersion);
-			return true;
+
+		public void addParam(String strType, String strName, String strValue) {
+			mAlstWS.add(strType);
+			mAlstWS.add(strName);
+			mAlstWS.add(strValue);
 		}
 
 		@Override
-		protected void onPostExecute(Boolean strResult) {
-			mProDialog.dismiss();
-			mCtx.startActivity(new Intent(mCtx, Login.class));
-			finish();
+		protected String doInBackground(String... params) {
+			if (!conDetect.isConnectingToInternet()) {
+				return "Error";
+			} else {
+				SoapObject soap = mJDBC.interactServer(mAlstWS, mStrMethod);
+				if (soap != null) {
+					if (mStrMethod.equals(JDBCAdapter.METHOD_GETCHAINDATA)) {
+						getChainData(soap);
+					}
+					if (mStrMethod.equals(JDBCAdapter.METHOD_GETSTOREDATA)) {
+						getStoreData(soap);
+					}
+					return "Connect";
+				} else {
+					return "Inconnect";
+				}
+			}
+		}
+
+		private void getChainData(SoapObject soap) {
+			int intSize = soap.getPropertyCount();
+			for (int i = 0; i < intSize; i++) {
+				SoapObject object = (SoapObject) soap.getProperty(i);
+				if (Boolean.valueOf(object.getPropertyAsString("isActive"))) {
+					mAlstChain.add(object.getPropertyAsString("name"));
+					mAlstChainId.add(object.getPropertyAsString("id"));
+				}
+			}
+		}
+
+		private void getStoreData(SoapObject soap) {
+			int intSize = soap.getPropertyCount();
+			for (int i = 0; i < intSize; i++) {
+				SoapObject object = (SoapObject) soap.getProperty(i);
+				if (Boolean.valueOf(object.getPropertyAsString("IsActive"))) {
+					mAlstStore.add(object.getPropertyAsString("fld_str_Name"));
+					mAlstStoreId.add(object.getPropertyAsString("fld_lng_ID"));
+				}
+			}
+		}
+
+		@Override
+		protected void onPostExecute(String strResult) {
+			proDialog.dismiss();
+			if (strResult.equals("Error")) {
+				Toast.makeText(mCtx, "Can't connect to server!",
+						Toast.LENGTH_SHORT).show();
+			} else {
+				if (mStrMethod.equals(JDBCAdapter.METHOD_GETCHAINDATA)
+						|| mStrMethod.equals(JDBCAdapter.METHOD_GETSTOREDATA)) {
+					if (strResult.equals("Inconnect")) {
+						Toast.makeText(mCtx, "Can't get data from server!",
+								Toast.LENGTH_SHORT).show();
+					}
+				}
+			}
 		}
 
 		@Override
 		protected void onPreExecute() {
-			mProDialog.setTitle("Upgrade database");
-			mProDialog.setMessage("Upgrading...");
-			mProDialog.setCancelable(false);
-			mProDialog.setCanceledOnTouchOutside(false);
-			mProDialog.show();
+			proDialog = new ProgressDialog(mCtx);
+			proDialog.setTitle(mStrTitle);
+			proDialog.setMessage("Processing...");
+			proDialog.setCanceledOnTouchOutside(false);
+			proDialog.setCancelable(false);
+			proDialog.show();
 		}
 
 	}
+
 }

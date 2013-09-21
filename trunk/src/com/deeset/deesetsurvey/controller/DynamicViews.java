@@ -1,6 +1,7 @@
 package com.deeset.deesetsurvey.controller;
 
 import java.util.ArrayList;
+
 import android.content.Context;
 import android.graphics.Color;
 import android.support.v4.view.ViewPager.LayoutParams;
