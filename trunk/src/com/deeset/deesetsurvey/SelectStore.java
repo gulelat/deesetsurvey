@@ -1,11 +1,13 @@
 package com.deeset.deesetsurvey;
 
 import java.util.ArrayList;
+import java.util.Calendar;
 
 import org.ksoap2.serialization.SoapObject;
 
 import android.app.Activity;
 import android.app.ProgressDialog;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.os.AsyncTask;
@@ -18,10 +20,11 @@ import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemSelectedListener;
 import android.widget.ArrayAdapter;
 import android.widget.Spinner;
-import android.widget.Toast;
 
 import com.deeset.deesetsurvey.controller.ConnectionDetector;
+import com.deeset.deesetsurvey.model.DBAdapter;
 import com.deeset.deesetsurvey.model.JDBCAdapter;
+import com.deeset.deesetsurvey.profile.GlobalInfo;
 
 public class SelectStore extends Activity implements OnItemSelectedListener {
 
@@ -36,7 +39,7 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 	private ArrayList<String> mAlstStore;
 	private ArrayList<String> mAlstStoreId;
 
-	private String mStrUserId;
+	private DBAdapter mDB;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -46,19 +49,14 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 				WindowManager.LayoutParams.FLAG_FULLSCREEN);
 		setContentView(R.layout.selectchainstore);
 
-		initialViews();
-		initialData();
-		getIntentValues();
-	}
-
-	private void initialViews() {
 		mSpinChain = (Spinner) findViewById(R.id.spinSelectChain);
 		mSpinStore = (Spinner) findViewById(R.id.spinSelectStore);
+		mDB = new DBAdapter(this);
+		mDB.open();
+		initialData();
 	}
 
 	private void initialData() {
-		getIntentValues();
-
 		mAlstChain = new ArrayList<String>();
 		mAlstChainId = new ArrayList<String>();
 		loadDataChain();
@@ -80,16 +78,12 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 		mSpinStore.setOnItemSelectedListener(this);
 	}
 
-	private void getIntentValues() {
-		mStrUserId = getIntent().getStringExtra("userid");
-	}
-
 	private void loadDataStore(int intIndex) {
 		mAlstStore.add("Select Store");
 		mAlstStoreId.add("-1");
 		if (intIndex != 0 && mAlstChainId.size() > intIndex) {
 			InteractServer actServer = new InteractServer(this,
-					"Get store data", JDBCAdapter.METHOD_GETSTOREDATA);
+					"Get store data", JDBCAdapter.METHOD_GETSTOREDATA, true, false);
 			actServer.addParam(JDBCAdapter.TYPE_INTEGER, "ChainID",
 					mAlstChainId.get(intIndex));
 			actServer.execute();
@@ -99,9 +93,9 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 	private void loadDataChain() {
 		mAlstChain.add("Select Chain");
 		mAlstChainId.add("-1");
-		if (mStrUserId != null) {
+		if (GlobalInfo.getUserId() != null) {
 			InteractServer actServer = new InteractServer(this,
-					"Get chain data", JDBCAdapter.METHOD_GETCHAINDATA);
+					"Get chain data", JDBCAdapter.METHOD_GETCHAINDATA, true, false);
 			actServer.execute();
 		}
 	}
@@ -109,27 +103,23 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 	public void submitChainStoreSurvey(View v) {
 		if ((mSpinChain.getSelectedItemPosition() == 0)
 				|| (mSpinStore.getSelectedItemPosition() == 0)) {
-			Toast.makeText(SelectStore.this,
-					"Please choose Chain and Store specific!",
-					Toast.LENGTH_SHORT).show();
+			GlobalInfo.showToast(this,
+					"Please choose Chain and Store specific!");
 		} else {
 			Intent intent = new Intent(SelectStore.this, StaticSurveys.class);
-			putIntentValues(intent);
+			Log.i("StoreID",
+					mAlstStoreId.get(mSpinStore.getSelectedItemPosition()));
+			GlobalInfo.setStoreId(mAlstStoreId.get(mSpinStore
+					.getSelectedItemPosition() + 1));
+			GlobalInfo.setStoreName(mSpinStore.getSelectedItem().toString());
 			startActivity(intent);
 		}
-	}
-
-	private void putIntentValues(Intent intent) {
-		Log.i("StoreID", mAlstStoreId.get(mSpinStore.getSelectedItemPosition()));
-		intent.putExtra("storeid",
-				mAlstStoreId.get(mSpinStore.getSelectedItemPosition()));
-		intent.putExtra("storename", mSpinStore.getSelectedItem().toString());
-		intent.putExtra("userid", mStrUserId);
 	}
 
 	public void resetChainSurvey(View v) {
 		mSpinChain.setSelection(0);
 		mAlstStore.clear();
+		mAlstStoreId.clear();
 		loadDataStore(0);
 		mAdapterStore.notifyDataSetChanged();
 		mSpinStore.setSelection(0);
@@ -141,6 +131,7 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 		switch (arg0.getId()) {
 		case R.id.spinSelectChain:
 			mAlstStore.clear();
+			mAlstStoreId.clear();
 			loadDataStore(arg2);
 			mAdapterStore.notifyDataSetChanged();
 			break;
@@ -154,7 +145,7 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 
 	}
 
-	private class InteractServer extends AsyncTask<String, Integer, String> {
+	private class InteractServer extends AsyncTask<String, Integer, Integer> {
 
 		private String mStrTitle = "";
 		private String mStrMethod = "";
@@ -163,15 +154,22 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 		private Context mCtx;
 		private JDBCAdapter mJDBC;
 		private ProgressDialog proDialog;
+		private boolean mBlnUpdateData = false;
+		private boolean mBlnShowProDialog;
 		private ConnectionDetector conDetect;
+		private long longTimeExipred = 0;
 
-		public InteractServer(Context ctx, String strTitle, String strMethod) {
+		public InteractServer(Context ctx, String strTitle, String strMethod,
+				boolean blnShowProDialog, boolean blnUpdateData) {
+			mBlnShowProDialog = blnShowProDialog;
+			mBlnUpdateData = blnUpdateData;
 			mCtx = ctx;
 			mStrTitle = strTitle;
 			mStrMethod = strMethod;
 			mJDBC = new JDBCAdapter();
-			conDetect = new ConnectionDetector(mCtx);
 			mAlstWS = new ArrayList<String>();
+			conDetect = new ConnectionDetector(mCtx);
+			proDialog = new ProgressDialog(mCtx);
 		}
 
 		public void addParam(String strType, String strName, String strValue) {
@@ -181,74 +179,192 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 		}
 
 		@Override
-		protected String doInBackground(String... params) {
-			if (!conDetect.isConnectingToInternet()) {
-				return "Error";
+		protected Integer doInBackground(String... params) {
+			getUpdateTime();
+			if (!mBlnUpdateData) {
+				if (mStrMethod.equals(JDBCAdapter.METHOD_GETCHAINDATA)) {
+					if (queryChains()) {
+						return JDBCAdapter.RESULT_OK;
+					}
+				}
+				if (mStrMethod.equals(JDBCAdapter.METHOD_GETSTOREDATA)) {
+					if (queryStores()) {
+						return JDBCAdapter.RESULT_OK;
+					}
+				}
+				return JDBCAdapter.RESULT_NOTDATA;
 			} else {
 				SoapObject soap = mJDBC.interactServer(mAlstWS, mStrMethod);
 				if (soap != null) {
-					if (mStrMethod.equals(JDBCAdapter.METHOD_GETCHAINDATA)) {
-						getChainData(soap);
+					if (soap.getPropertyCount() != 0) {
+						if (mStrMethod.equals(JDBCAdapter.METHOD_GETCHAINDATA)) {
+							mDB.insertChain(soap, longTimeExipred);
+						}
+						if (mStrMethod.equals(JDBCAdapter.METHOD_GETSTOREDATA)) {
+							mDB.insertStore(soap, mAlstWS.get(2),
+									longTimeExipred);
+						}
+						return JDBCAdapter.RESULT_OK;
 					}
-					if (mStrMethod.equals(JDBCAdapter.METHOD_GETSTOREDATA)) {
-						getStoreData(soap);
-					}
-					return "Connect";
+					return JDBCAdapter.RESULT_EMPTYDATA;
 				} else {
-					return "Inconnect";
+					return JDBCAdapter.RESULT_NOTCONNECT;
 				}
 			}
 		}
 
-		private void getChainData(SoapObject soap) {
-			int intSize = soap.getPropertyCount();
-			for (int i = 0; i < intSize; i++) {
-				SoapObject object = (SoapObject) soap.getProperty(i);
-				if (Boolean.valueOf(object.getPropertyAsString("isActive"))) {
-					mAlstChain.add(object.getPropertyAsString("name"));
-					mAlstChainId.add(object.getPropertyAsString("id"));
+		private void getUpdateTime() {
+			if (mBlnShowProDialog) {
+				if (mStrMethod.equals(JDBCAdapter.METHOD_GETCHAINDATA)) {
+					longTimeExipred = mDB.queryTimeExpired(
+							DBAdapter.LOG_ALL_CHAIN, "0");
+				}
+				if (mStrMethod.equals(JDBCAdapter.METHOD_GETSTOREDATA)) {
+					longTimeExipred = mDB.queryTimeExpired(DBAdapter.LOG_CHAIN,
+							mAlstWS.get(2));
+				}
+				if (conDetect.isConnectingToInternet()
+						&& Calendar.getInstance().getTimeInMillis()
+								- longTimeExipred > JDBCAdapter.TIME_OUT) {
+					mBlnUpdateData = true;
+					Log.i("update Data", longTimeExipred + "");
 				}
 			}
 		}
 
-		private void getStoreData(SoapObject soap) {
-			int intSize = soap.getPropertyCount();
-			for (int i = 0; i < intSize; i++) {
-				SoapObject object = (SoapObject) soap.getProperty(i);
-				if (Boolean.valueOf(object.getPropertyAsString("IsActive"))) {
-					mAlstStore.add(object.getPropertyAsString("fld_str_Name"));
-					mAlstStoreId.add(object.getPropertyAsString("fld_lng_ID"));
+		private boolean queryStores() {
+			ArrayList<ContentValues> alstStores = mDB.queryData(
+					DBAdapter.TABLE_STORE, "ChainID=?",
+					new String[] { mAlstWS.get(2) });
+			if (alstStores.size() != 0) {
+				mAlstStore.clear();
+				mAlstStoreId.clear();
+				mAlstStore.add("Select Store");
+				mAlstStoreId.add("-1");
+				for (ContentValues contentValues : alstStores) {
+					mAlstStore.add(contentValues.getAsString("StoreName"));
+					mAlstStoreId.add(contentValues.getAsString("StoreID"));
 				}
+				return true;
 			}
+			return false;
+		}
+
+		private boolean queryChains() {
+			ArrayList<ContentValues> alstChains = mDB.queryData(
+					DBAdapter.TABLE_CHAIN, null, null);
+			if (alstChains.size() != 0) {
+				mAlstChain.clear();
+				mAlstChainId.clear();
+				mAlstChain.add("Select Store");
+				mAlstChainId.add("-1");
+				for (ContentValues contentValues : alstChains) {
+					mAlstChainId.add(contentValues.getAsString("ChainID"));
+					mAlstChain.add(contentValues.getAsString("ChainName"));
+				}
+				return true;
+			}
+			return false;
 		}
 
 		@Override
-		protected void onPostExecute(String strResult) {
-			proDialog.dismiss();
-			if (strResult.equals("Error")) {
-				Toast.makeText(mCtx, "Can't connect to server!",
-						Toast.LENGTH_SHORT).show();
-			} else {
-				if (mStrMethod.equals(JDBCAdapter.METHOD_GETCHAINDATA)
-						|| mStrMethod.equals(JDBCAdapter.METHOD_GETSTOREDATA)) {
-					if (strResult.equals("Inconnect")) {
-						Toast.makeText(mCtx, "Can't get data from server!",
-								Toast.LENGTH_SHORT).show();
+		protected void onPostExecute(Integer result) {
+			if (!mBlnUpdateData) {
+				if (result == JDBCAdapter.RESULT_NOTDATA) {
+					if (conDetect.isConnectingToInternet()) {
+						startUpdateSurvey(true);
+					} else {
+						GlobalInfo.showToast(mCtx,
+								JDBCAdapter.STR_NODATAOFFLINE);
+					}
+				} else {
+					if (conDetect.isConnectingToInternet()
+							&& Calendar.getInstance().getTimeInMillis()
+									- longTimeExipred > JDBCAdapter.TIME_UPDATE) {
+						Log.i("update Data", longTimeExipred + "");
+						startUpdateSurvey(false);
 					}
 				}
+			} else {
+				if (result == JDBCAdapter.RESULT_OK) {
+					if (mStrMethod.equals(JDBCAdapter.METHOD_GETCHAINDATA)) {
+						if (!queryChains() && mBlnShowProDialog) {
+							GlobalInfo.showToast(mCtx,
+									JDBCAdapter.STR_NOTLOADDATA);
+						}
+					}
+					if (mStrMethod.equals(JDBCAdapter.METHOD_GETSTOREDATA)) {
+						if (!queryStores() && mBlnShowProDialog) {
+							GlobalInfo.showToast(mCtx,
+									JDBCAdapter.STR_NOTLOADDATA);
+						}
+					}
+				} else {
+					if (result == JDBCAdapter.RESULT_EMPTYDATA) {
+						if (mStrMethod.equals(JDBCAdapter.METHOD_GETCHAINDATA)) {
+							GlobalInfo.showToast(mCtx,
+									JDBCAdapter.STR_EMPTYDATA + "chains!");
+						}
+						if (mStrMethod.equals(JDBCAdapter.METHOD_GETSTOREDATA)) {
+							GlobalInfo.showToast(mCtx,
+									JDBCAdapter.STR_EMPTYDATA + "chain "
+											+ mSpinChain.getSelectedItem().toString() + "!");
+						}
+					} else {
+						GlobalInfo.showToast(mCtx, JDBCAdapter.STR_NOCONNECT);
+					}
+				}
+			}
+			mAdapterChain.notifyDataSetChanged();
+			mAdapterStore.notifyDataSetChanged();
+			proDialog.dismiss();
+		}
+
+		private void startUpdateSurvey(boolean blnShowProDialog) {
+			if (mStrMethod.equals(JDBCAdapter.METHOD_GETCHAINDATA)) {
+				InteractServer actServer = new InteractServer(mCtx,
+						"Get chain data", JDBCAdapter.METHOD_GETCHAINDATA,
+						blnShowProDialog, true);
+				actServer.execute();
+			}
+			if (mStrMethod.equals(JDBCAdapter.METHOD_GETSTOREDATA)) {
+				InteractServer actServer = new InteractServer(mCtx,
+						"Get store data", JDBCAdapter.METHOD_GETSTOREDATA,
+						blnShowProDialog, true);
+				actServer.addParam(JDBCAdapter.TYPE_INTEGER, "ChainID",
+						mAlstWS.get(2));
+				actServer.execute();
 			}
 		}
 
 		@Override
 		protected void onPreExecute() {
-			proDialog = new ProgressDialog(mCtx);
-			proDialog.setTitle(mStrTitle);
-			proDialog.setMessage("Processing...");
-			proDialog.setCanceledOnTouchOutside(false);
-			proDialog.setCancelable(false);
-			proDialog.show();
-		}
+			if (mBlnShowProDialog) {
+				proDialog.setTitle(mStrTitle);
+				proDialog.setMessage("Processing...");
+				proDialog.setCanceledOnTouchOutside(false);
+				proDialog.setCancelable(false);
+				proDialog.show();
+			}
 
+		}
+		
+	}
+	
+	@Override
+	protected void onStop() {
+		super.onPause();
+		if (mDB.isOpen()) {
+			mDB.close();
+		}
+	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		if (!mDB.isOpen()) {
+			mDB.open();
+		}
 	}
 
 }
