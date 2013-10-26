@@ -75,10 +75,9 @@ public class SubmittedResult extends Activity {
 		mDynaViews = new DynamicViews(SubmittedResult.this, null);
 		mDB.open();
 		for (int i = 0; i < mIntTotal; i++) {
+			String[] strParams = {mStrUserId, mStrStoreId, mStrSurveyId, (i + 1) + ""};
 			ArrayList<ContentValues> arrlstResult = mDB.queryData("TblResult",
-					"UserID='" + mStrUserId + "' AND StoreID='" + mStrStoreId
-							+ "' AND SurveyID='" + mStrSurveyId
-							+ "' AND QuestionOrder='" + (i + 1) + "'");
+					"UserID=? AND StoreID=? AND SurveyID=? AND QuestionOrder=?", strParams);
 			Log.i("Size", arrlstResult.size() + "");
 			for (int j = 0; j < arrlstResult.size(); j++) {
 				ContentValues content = arrlstResult.get(j);

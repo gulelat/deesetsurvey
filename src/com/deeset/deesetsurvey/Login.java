@@ -1,27 +1,39 @@
 package com.deeset.deesetsurvey;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import org.ksoap2.serialization.SoapObject;
-import com.deeset.deesetsurvey.controller.ConnectionDetector;
-import com.deeset.deesetsurvey.model.JDBCAdapter;
+import android.app.Activity;
+import android.app.ProgressDialog;
+import android.content.ContentValues;
+import android.content.Context;
+import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.util.Log;
+import android.os.Environment;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.Toast;
-import android.app.Activity;
-import android.app.ProgressDialog;
-import android.content.Context;
-import android.content.Intent;
+import com.deeset.deesetsurvey.controller.ConnectionDetector;
+import com.deeset.deesetsurvey.model.DBAdapter;
+import com.deeset.deesetsurvey.model.JDBCAdapter;
+import com.deeset.deesetsurvey.profile.GlobalInfo;
 
 public class Login extends Activity {
 
 	private ConnectionDetector conDetect;
 	private EditText mEdtUser;
 	private EditText mEdtPass;
+	private DBAdapter mDB;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -31,23 +43,29 @@ public class Login extends Activity {
 				WindowManager.LayoutParams.FLAG_FULLSCREEN);
 		setContentView(R.layout.login);
 
-		initialViews();
-		initialControllers();
-		initialChecks();
-	}
-
-	private void initialViews() {
 		mEdtUser = (EditText) findViewById(R.id.edtLoginUser);
 		mEdtPass = (EditText) findViewById(R.id.edtLoginPass);
-	}
-
-	private void initialControllers() {
 		conDetect = new ConnectionDetector(this);
-	}
-
-	private void initialChecks() {
+		mDB = new DBAdapter(this);
+		mDB.open();
 		if (!conDetect.isConnectingToInternet()) {
 			conDetect.showSettingsAlert();
+		}
+	}
+
+	@Override
+	protected void onStop() {
+		super.onPause();
+		if (mDB.isOpen()) {
+			mDB.close();
+		}
+	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		if (!mDB.isOpen()) {
+			mDB.open();
 		}
 	}
 
@@ -56,15 +74,15 @@ public class Login extends Activity {
 		String strPassword = mEdtPass.getText().toString();
 		if (!strUsername.equals("") || !strPassword.equals("")) {
 			InteractServer actServer = new InteractServer(Login.this,
-					"Check Account Login", JDBCAdapter.METHOD_CHECKUSERLOGIN);
+					"Check Account Login", JDBCAdapter.METHOD_CHECKUSERLOGIN,
+					conDetect.isConnectingToInternet());
 			actServer
 					.addParam(JDBCAdapter.TYPE_STRING, "Username", strUsername);
 			actServer
 					.addParam(JDBCAdapter.TYPE_STRING, "Password", strPassword);
 			actServer.execute();
 		} else {
-			Toast.makeText(Login.this, "Please fill username or password!",
-					Toast.LENGTH_SHORT).show();
+			GlobalInfo.showToast(this, "Please fill username and password!");
 		}
 	}
 
@@ -77,14 +95,15 @@ public class Login extends Activity {
 		private Context mCtx;
 		private JDBCAdapter mJDBC;
 		private ProgressDialog proDialog;
-		private ConnectionDetector conDetect;
+		private boolean mBlnOnline = false;
 
-		public InteractServer(Context ctx, String strTitle, String strMethod) {
+		public InteractServer(Context ctx, String strTitle, String strMethod,
+				boolean blnOnline) {
+			mBlnOnline = blnOnline;
 			mCtx = ctx;
 			mStrTitle = strTitle;
 			mStrMethod = strMethod;
 			mJDBC = new JDBCAdapter();
-			conDetect = new ConnectionDetector(mCtx);
 			mAlstWS = new ArrayList<String>();
 		}
 
@@ -96,8 +115,15 @@ public class Login extends Activity {
 
 		@Override
 		protected String doInBackground(String... params) {
-			if (!conDetect.isConnectingToInternet()) {
-				return "Error";
+			if (!mBlnOnline) {
+				ArrayList<ContentValues> alst = mDB.queryData(
+						DBAdapter.TABLE_USER, "Username=? AND Password=?",
+						new String[] { mAlstWS.get(2), mAlstWS.get(5) });
+				if (alst.size() != 0) {
+					return alst.get(0).getAsString("UserID");
+				} else {
+					return "Inconnect";
+				}
 			} else {
 				SoapObject soap = mJDBC.interactServer(mAlstWS, mStrMethod);
 				if (soap != null) {
@@ -111,19 +137,24 @@ public class Login extends Activity {
 		@Override
 		protected void onPostExecute(String strResult) {
 			proDialog.dismiss();
-			if (strResult.equals("Error")) {
-				Toast.makeText(mCtx, "Can't connect to server!",
-						Toast.LENGTH_SHORT).show();
-			} else {
-				if (mStrMethod.equals(JDBCAdapter.METHOD_CHECKUSERLOGIN)) {
-					if (strResult.equals("Inconnect")) {
-						Toast.makeText(mCtx, "Username or password incorrect!",
-								Toast.LENGTH_SHORT).show();
+			if (mStrMethod.equals(JDBCAdapter.METHOD_CHECKUSERLOGIN)) {
+				if (strResult.equals("Inconnect")) {
+					Toast.makeText(mCtx, "Username or password incorrect!",
+							Toast.LENGTH_SHORT).show();
+				} else {
+					if (mBlnOnline) {
+						ContentValues content = new ContentValues();
+						content.put("UserID", strResult);
+						content.put("Username", mAlstWS.get(2));
+						content.put("Password", mAlstWS.get(5));
+						mDB.insertUser(content);
 					} else {
-						Log.i("SurveyeeID", strResult);
-						mCtx.startActivity(new Intent(mCtx, SelectStore.class)
-								.putExtra("userid", strResult));
+						Toast.makeText(
+								mCtx,
+								"You're offline! Survey data can not appropriate! Please connect internet!",
+								Toast.LENGTH_SHORT).show();
 					}
+					startSurvey(mCtx, strResult);
 				}
 			}
 		}
@@ -137,7 +168,59 @@ public class Login extends Activity {
 			proDialog.setCancelable(false);
 			proDialog.show();
 		}
+	}
 
+	private void startSurvey(Context ctx, String strResult) {
+		GlobalInfo.setUserId(strResult);
+		ctx.startActivity(new Intent(ctx, SelectStore.class));
+	}
+
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		getMenuInflater().inflate(R.menu.main, menu);
+		return true;
+	}
+
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		switch (item.getItemId()) {
+		case R.id.action_settings:
+			backupToExternal();
+			break;
+
+		default:
+			break;
+		}
+		return super.onOptionsItemSelected(item);
+	}
+
+	private void backupToExternal() {
+		// backup db from internal to external
+		try {
+			File sd = Environment.getExternalStorageDirectory();
+			File data = Environment.getDataDirectory();
+
+			if (sd.canWrite()) {
+				String currentDBPath = "//data//com.deeset.deesetsurvey//databases//dbdeesetsurvey";
+				String backupDBPath = "dbdeesetsurvey";
+				File currentDB = new File(data, currentDBPath);
+				File backupDB = new File(sd, backupDBPath);
+
+				if (currentDB.exists()) {
+					FileChannel src = new FileInputStream(currentDB)
+							.getChannel();
+					FileChannel dst = new FileOutputStream(backupDB)
+							.getChannel();
+					dst.transferFrom(src, 0, src.size());
+					src.close();
+					dst.close();
+				}
+			}
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
 }

@@ -24,9 +24,22 @@ public class JDBCAdapter {
 	public final static String METHOD_GETQUESTIONSDATA = "GetQuestionsData";
 	public final static String METHOD_GETQUESTIONOPTIONDATA = "GetQuestionOptionData";
 	public final static String METHOD_INSERTSURVEYANSWER = "InsertSurveyAnswer";
+	
+	public final static int RESULT_OK = 0;
+	public final static int RESULT_NOTCONNECT = 1;
+	public final static int RESULT_NOTDATA = -1;
+	public final static int RESULT_EMPTYDATA = 2;
+	
+	public final static String STR_NOCONNECT = "No connect to server!";
+	public final static String STR_NODATAOFFLINE = "Unavailable data! Please connect internet!";
+	public final static String STR_NOTLOADDATA = "Can't load data!";
+	public final static String STR_EMPTYDATA = "Can't found data for ";
 
 	public final static String TYPE_INTEGER = "int";
 	public final static String TYPE_STRING = "string";
+	
+	public final static long TIME_UPDATE = 15 * 60 * 1000;
+	public final static long TIME_OUT = 1 * 60 * 60 * 1000;
 
 	private SoapObject request;
 	private SoapSerializationEnvelope envelope;

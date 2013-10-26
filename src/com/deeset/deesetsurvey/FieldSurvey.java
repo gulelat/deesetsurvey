@@ -406,7 +406,7 @@ public class FieldSurvey extends Activity {
 		content.put("Question", strQuesCont);
 		content.put("Answer", strAnswer);
 		mDB.open();
-		mDB.insertData("TblResult", content);
+		//mDB.insertData("TblResult", content);
 		mDB.close();
 	}
 

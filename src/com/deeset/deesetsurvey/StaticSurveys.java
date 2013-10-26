@@ -2,12 +2,18 @@ package com.deeset.deesetsurvey;
 
 import java.util.ArrayList;
 import java.util.Calendar;
+
 import org.ksoap2.serialization.SoapObject;
+
 import com.deeset.deesetsurvey.controller.ConnectionDetector;
 import com.deeset.deesetsurvey.controller.DynamicViews;
+import com.deeset.deesetsurvey.model.DBAdapter;
 import com.deeset.deesetsurvey.model.JDBCAdapter;
+import com.deeset.deesetsurvey.profile.GlobalInfo;
+
 import android.app.Activity;
 import android.app.ProgressDialog;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.os.AsyncTask;
@@ -19,7 +25,6 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 public class StaticSurveys extends Activity {
 
@@ -30,10 +35,11 @@ public class StaticSurveys extends Activity {
 	private String mStrStoreName;
 	private TextView mTxtNameStore;
 	private DynamicViews mDynaViews;
-	public static ArrayList<Integer> mAlstStaticSurveyId;
-	public static ArrayList<String> mAlstStaticSurveyTitle;
-	public static ArrayList<Integer> mAlstCurrentSurveyId;
-	public static ArrayList<String> mAlstCurrentSurveyTitle;
+	public ArrayList<Integer> mAlstStaticSurveyId;
+	public ArrayList<String> mAlstStaticSurveyTitle;
+	public ArrayList<Integer> mAlstCurrentSurveyId;
+	public ArrayList<String> mAlstCurrentSurveyTitle;
+	public DBAdapter mDB;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -56,10 +62,12 @@ public class StaticSurveys extends Activity {
 	}
 
 	private void getIntentValues() {
-		mStrUserId = getIntent().getStringExtra("userid");
-		mStrStoreId = getIntent().getStringExtra("storeid");
-		mStrStoreName = getIntent().getStringExtra("storename");
+		mStrUserId = GlobalInfo.getUserId();
+		mStrStoreId = GlobalInfo.getStoreId();
+		mStrStoreName = GlobalInfo.getStoreName();
 		mTxtNameStore.setText(mStrStoreName);
+		mDB = new DBAdapter(this);
+		mDB.open();
 	}
 
 	private void loadStaticSurveysQuestion() {
@@ -70,7 +78,7 @@ public class StaticSurveys extends Activity {
 		if (mStrStoreId != null && mStrUserId != null) {
 			InteractServer actServer = new InteractServer(this,
 					"Get static surveys",
-					JDBCAdapter.METHOD_GETSTATICSURVEYDATA);
+					JDBCAdapter.METHOD_GETSTATICSURVEYDATA, true, false);
 			actServer
 					.addParam(JDBCAdapter.TYPE_INTEGER, "StoreID", mStrStoreId);
 			actServer.addParam(JDBCAdapter.TYPE_STRING, "startDate",
@@ -101,17 +109,7 @@ public class StaticSurveys extends Activity {
 		startActivity(new Intent(this, Login.class));
 	}
 
-	private void putIntentValues(Intent intent, String strSurveyId,
-			String strSurveyName) {
-		Log.i("SurveyID", strSurveyId);
-		intent.putExtra("userid", mStrUserId);
-		intent.putExtra("storeid", mStrStoreId);
-		intent.putExtra("storename", mStrStoreName);
-		intent.putExtra("surveyid", strSurveyId);
-		intent.putExtra("surveyname", strSurveyName);
-	}
-
-	private class InteractServer extends AsyncTask<String, Integer, String> {
+	private class InteractServer extends AsyncTask<String, Integer, Integer> {
 
 		private String mStrTitle = "";
 		private String mStrMethod = "";
@@ -122,14 +120,21 @@ public class StaticSurveys extends Activity {
 		private ConnectionDetector conDetect;
 
 		private ArrayList<String> mAlstWS;
+		private boolean mBlnUpdateData = false;
+		private boolean mBlnShowProDialog = true;
+		private long longTimeExipred = 0;
 
-		public InteractServer(Context ctx, String strTitle, String strMethod) {
+		public InteractServer(Context ctx, String strTitle, String strMethod,
+				boolean blnShowProDialog, boolean blnUpdateData) {
+			mBlnShowProDialog = blnShowProDialog;
+			mBlnUpdateData = blnUpdateData;
 			mCtx = ctx;
 			mStrTitle = strTitle;
 			mStrMethod = strMethod;
 			mJDBC = new JDBCAdapter();
 			conDetect = new ConnectionDetector(mCtx);
 			mAlstWS = new ArrayList<String>();
+			proDialog = new ProgressDialog(mCtx);
 		}
 
 		public void addParam(String strType, String strName, String strValue) {
@@ -139,86 +144,169 @@ public class StaticSurveys extends Activity {
 		}
 
 		@Override
-		protected String doInBackground(String... params) {
-			if (!conDetect.isConnectingToInternet()) {
-				return "Error";
+		protected Integer doInBackground(String... params) {
+			getUpdateTime();
+			if (!mBlnUpdateData) {
+				if (querySurvey()) {
+					return JDBCAdapter.RESULT_OK;
+				}
+				return JDBCAdapter.RESULT_NOTDATA;
 			} else {
 				SoapObject soap = mJDBC.interactServer(mAlstWS, mStrMethod);
 				if (soap != null) {
-					if (mStrMethod
-							.equals(JDBCAdapter.METHOD_GETSTATICSURVEYDATA)) {
-						getStaticSurveyData(soap);
+					if (soap.getPropertyCount() != 0) {
+						if (mStrMethod
+								.equals(JDBCAdapter.METHOD_GETSTATICSURVEYDATA)) {
+							mDB.insertSurvey(soap, mAlstWS.get(2), "1",
+									longTimeExipred);
+						}
+						if (mStrMethod
+								.equals(JDBCAdapter.METHOD_GETCURRENTSURVEYDATA)) {
+							mDB.insertSurvey(soap, mAlstWS.get(2), "0",
+									longTimeExipred);
+						}
+						return JDBCAdapter.RESULT_OK;
 					}
-					if (mStrMethod
-							.equals(JDBCAdapter.METHOD_GETCURRENTSURVEYDATA)) {
-						getCurrentSurveyData(soap);
-					}
-					return "Connect";
+					return JDBCAdapter.RESULT_EMPTYDATA;
 				} else {
-					return "Inconnect";
+					return JDBCAdapter.RESULT_NOTCONNECT;
 				}
 			}
 		}
 
-		private void getCurrentSurveyData(SoapObject soap) {
-			int intSize = soap.getPropertyCount();
-			for (int i = 0; i < intSize; i++) {
-				SoapObject object = (SoapObject) soap.getProperty(i);
-				mAlstCurrentSurveyId.add(Integer.valueOf(object
-						.getPropertyAsString("SurveyID")));
-				mAlstCurrentSurveyTitle.add(object
-						.getPropertyAsString("Survey_Name"));
+		private void getUpdateTime() {
+			if (mBlnShowProDialog) {
+				longTimeExipred = mDB.queryTimeExpired(DBAdapter.LOG_STORE,
+						mAlstWS.get(2));
+				if (conDetect.isConnectingToInternet()
+						&& Calendar.getInstance().getTimeInMillis()
+								- longTimeExipred > JDBCAdapter.TIME_OUT) {
+					mBlnUpdateData = true;
+					Log.i("update Data", longTimeExipred + "");
+				}
 			}
 		}
 
-		private void getStaticSurveyData(SoapObject soap) {
-			int intSize = soap.getPropertyCount();
-			for (int i = 0; i < intSize; i++) {
-				SoapObject object = (SoapObject) soap.getProperty(i);
-				mAlstStaticSurveyId.add(Integer.valueOf(object
-						.getPropertyAsString("SurveyID")));
-				mAlstStaticSurveyTitle.add(object
-						.getPropertyAsString("Survey_Name"));
+		private boolean querySurvey() {
+			ArrayList<ContentValues> alstStaticSurvey = mDB.queryData(
+					DBAdapter.TABLE_SURVEY, "StoreID = ? AND Type = 1",
+					new String[] { mAlstWS.get(2) });
+			ArrayList<ContentValues> alstCurrentSurvey = mDB.queryData(
+					DBAdapter.TABLE_SURVEY, "StoreID = ? AND Type = 0",
+					new String[] { mAlstWS.get(2) });
+			if (alstStaticSurvey.size() != 0 || alstCurrentSurvey.size() != 0) {
+				for (ContentValues contentValues : alstStaticSurvey) {
+					mAlstStaticSurveyTitle.add(contentValues
+							.getAsString("SurveyName"));
+					mAlstStaticSurveyId.add(contentValues
+							.getAsInteger("SurveyID"));
+				}
+				for (ContentValues contentValues : alstCurrentSurvey) {
+					mAlstCurrentSurveyTitle.add(contentValues
+							.getAsString("SurveyName"));
+					mAlstCurrentSurveyId.add(contentValues
+							.getAsInteger("SurveyID"));
+				}
+				return true;
 			}
+			return false;
 		}
 
 		@Override
-		protected void onPostExecute(String strResult) {
-			proDialog.dismiss();
-			if (strResult.equals("Error")) {
-				Toast.makeText(mCtx, "Can't connect to server!",
-						Toast.LENGTH_SHORT).show();
-			} else {
-				if (strResult.equals("Connect")) {
-					if (mStrMethod
-							.equals(JDBCAdapter.METHOD_GETSTATICSURVEYDATA)) {
-						initialStaticSurveys();
-						InteractServer actServer = new InteractServer(mCtx,
-								"Get current tasks",
-								JDBCAdapter.METHOD_GETCURRENTSURVEYDATA);
-						actServer.addParam(JDBCAdapter.TYPE_INTEGER, "StoreID",
-								mStrStoreId);
-						actServer.execute();
-					}
-					if (mStrMethod
-							.equals(JDBCAdapter.METHOD_GETCURRENTSURVEYDATA)) {
-						initialCurrentSurveys();
+		protected void onPostExecute(Integer result) {
+			if (!mBlnUpdateData) {
+				if (result == JDBCAdapter.RESULT_NOTDATA) {
+					if (conDetect.isConnectingToInternet()) {
+						startUpdateStaticSurvey(true);
+					} else {
+						GlobalInfo.showToast(mCtx,
+								JDBCAdapter.STR_NODATAOFFLINE);
 					}
 				} else {
-					Toast.makeText(mCtx, "Can't get data from server!",
-							Toast.LENGTH_SHORT).show();
+					initialStaticSurveys();
+					initialCurrentSurveys();
+					if (conDetect.isConnectingToInternet()
+							&& Calendar.getInstance().getTimeInMillis()
+									- longTimeExipred > JDBCAdapter.TIME_UPDATE) {
+						Log.i("update Data", longTimeExipred + "");
+						startUpdateStaticSurvey(false);
+					}
+				}
+			} else {
+				if (result == JDBCAdapter.RESULT_OK) {
+					if (mStrMethod
+							.equals(JDBCAdapter.METHOD_GETSTATICSURVEYDATA)) {
+						if (mBlnShowProDialog) {
+							if (!querySurvey()) {
+								GlobalInfo.showToast(mCtx,
+										JDBCAdapter.STR_NOTLOADDATA);
+							} else {
+								initialStaticSurveys();
+							}
+						}
+						if (!mBlnShowProDialog) {
+							startUpdateCurrentSurvey(false);
+						} else {
+							startUpdateCurrentSurvey(true);
+						}
+					}
+					if (mStrMethod
+							.equals(JDBCAdapter.METHOD_GETSTATICSURVEYDATA)) {
+						if (mBlnShowProDialog) {
+							if (!querySurvey()) {
+								GlobalInfo.showToast(mCtx,
+										JDBCAdapter.STR_NOTLOADDATA);
+							} else {
+								initialCurrentSurveys();
+							}
+						}
+					}
+				} else {
+					if (result == JDBCAdapter.RESULT_EMPTYDATA) {
+						if (mStrMethod
+								.equals(JDBCAdapter.METHOD_GETSTATICSURVEYDATA)) {
+							GlobalInfo.showToast(mCtx, JDBCAdapter.STR_EMPTYDATA
+									+ "store " + mStrStoreName + "!");
+						}
+					} else {
+						GlobalInfo.showToast(mCtx, JDBCAdapter.STR_NOCONNECT);
+					}
 				}
 			}
+			proDialog.dismiss();
+		}
+
+		private void startUpdateStaticSurvey(boolean blnShowProDialog) {
+			InteractServer actServer = new InteractServer(mCtx,
+					"Get static surveys",
+					JDBCAdapter.METHOD_GETSTATICSURVEYDATA, blnShowProDialog, true);
+			actServer.addParam(JDBCAdapter.TYPE_INTEGER, "StoreID",
+					mAlstWS.get(2));
+			actServer.addParam(JDBCAdapter.TYPE_STRING, "startDate",
+					mAlstWS.get(5));
+			actServer.addParam(JDBCAdapter.TYPE_STRING, "endDate",
+					mAlstWS.get(8));
+			actServer.execute();
+		}
+
+		private void startUpdateCurrentSurvey(boolean blnShowProDialog) {
+			InteractServer actServer = new InteractServer(mCtx,
+					"Get current surveys",
+					JDBCAdapter.METHOD_GETCURRENTSURVEYDATA, blnShowProDialog, true);
+			actServer.addParam(JDBCAdapter.TYPE_INTEGER, "StoreID",
+					mAlstWS.get(2));
+			actServer.execute();
 		}
 
 		@Override
 		protected void onPreExecute() {
-			proDialog = new ProgressDialog(mCtx);
-			proDialog.setTitle(mStrTitle);
-			proDialog.setMessage("Processing...");
-			proDialog.setCanceledOnTouchOutside(false);
-			proDialog.setCancelable(false);
-			proDialog.show();
+			if (mBlnShowProDialog) {
+				proDialog.setTitle(mStrTitle);
+				proDialog.setMessage("Processing...");
+				proDialog.setCanceledOnTouchOutside(false);
+				proDialog.setCancelable(false);
+				proDialog.show();
+			}
 		}
 
 	}
@@ -273,10 +361,27 @@ public class StaticSurveys extends Activity {
 		Intent intent = new Intent(StaticSurveys.this, FieldSurvey.class);
 		for (int i = 0; i < alstInt.size(); i++) {
 			if (vi.getId() == alstInt.get(i)) {
-				putIntentValues(intent, alstInt.get(i).toString(),
-						alstStr.get(i));
+				GlobalInfo.setSurveyId(alstInt.get(i).toString());
+				GlobalInfo.setSurveyName(alstStr.get(i));
 			}
 		}
 		startActivity(intent);
 	}
+	
+	@Override
+	protected void onStop() {
+		super.onPause();
+		if (mDB.isOpen()) {
+			mDB.close();
+		}
+	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		if (!mDB.isOpen()) {
+			mDB.open();
+		}
+	}
+	
 }
