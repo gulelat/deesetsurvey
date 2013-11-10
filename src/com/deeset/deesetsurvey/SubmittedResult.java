@@ -76,7 +76,7 @@ public class SubmittedResult extends Activity {
 		mDB.open();
 		for (int i = 0; i < mIntTotal; i++) {
 			String[] strParams = {mStrUserId, mStrStoreId, mStrSurveyId, (i + 1) + ""};
-			ArrayList<ContentValues> arrlstResult = mDB.queryData("TblResult",
+			ArrayList<ContentValues> arrlstResult = mDB.queryDatas("TblResult",
 					"UserID=? AND StoreID=? AND SurveyID=? AND QuestionOrder=?", strParams);
 			Log.i("Size", arrlstResult.size() + "");
 			for (int j = 0; j < arrlstResult.size(); j++) {

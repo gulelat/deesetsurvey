@@ -10,6 +10,7 @@ import android.app.ProgressDialog;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
@@ -83,7 +84,8 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 		mAlstStoreId.add("-1");
 		if (intIndex != 0 && mAlstChainId.size() > intIndex) {
 			InteractServer actServer = new InteractServer(this,
-					"Get store data", JDBCAdapter.METHOD_GETSTOREDATA, true, false);
+					"Get store data", JDBCAdapter.METHOD_GETSTOREDATA, true,
+					false);
 			actServer.addParam(JDBCAdapter.TYPE_INTEGER, "ChainID",
 					mAlstChainId.get(intIndex));
 			actServer.execute();
@@ -95,7 +97,8 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 		mAlstChainId.add("-1");
 		if (GlobalInfo.getUserId() != null) {
 			InteractServer actServer = new InteractServer(this,
-					"Get chain data", JDBCAdapter.METHOD_GETCHAINDATA, true, false);
+					"Get chain data", JDBCAdapter.METHOD_GETCHAINDATA, true,
+					false);
 			actServer.execute();
 		}
 	}
@@ -233,10 +236,10 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 		}
 
 		private boolean queryStores() {
-			ArrayList<ContentValues> alstStores = mDB.queryData(
+			ArrayList<ContentValues> alstStores = mDB.queryDatas(
 					DBAdapter.TABLE_STORE, "ChainID=?",
 					new String[] { mAlstWS.get(2) });
-			if (alstStores.size() != 0) {
+			if (alstStores.size() > 0) {
 				mAlstStore.clear();
 				mAlstStoreId.clear();
 				mAlstStore.add("Select Store");
@@ -251,9 +254,9 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 		}
 
 		private boolean queryChains() {
-			ArrayList<ContentValues> alstChains = mDB.queryData(
+			ArrayList<ContentValues> alstChains = mDB.queryDatas(
 					DBAdapter.TABLE_CHAIN, null, null);
-			if (alstChains.size() != 0) {
+			if (alstChains.size() > 0) {
 				mAlstChain.clear();
 				mAlstChainId.clear();
 				mAlstChain.add("Select Store");
@@ -307,8 +310,10 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 						}
 						if (mStrMethod.equals(JDBCAdapter.METHOD_GETSTOREDATA)) {
 							GlobalInfo.showToast(mCtx,
-									JDBCAdapter.STR_EMPTYDATA + "chain "
-											+ mSpinChain.getSelectedItem().toString() + "!");
+									JDBCAdapter.STR_EMPTYDATA
+											+ "chain "
+											+ mSpinChain.getSelectedItem()
+													.toString() + "!");
 						}
 					} else {
 						GlobalInfo.showToast(mCtx, JDBCAdapter.STR_NOCONNECT);
@@ -348,15 +353,7 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 			}
 
 		}
-		
-	}
-	
-	@Override
-	protected void onStop() {
-		super.onPause();
-		if (mDB.isOpen()) {
-			mDB.close();
-		}
+
 	}
 
 	@Override
@@ -365,6 +362,18 @@ public class SelectStore extends Activity implements OnItemSelectedListener {
 		if (!mDB.isOpen()) {
 			mDB.open();
 		}
+	}
+	
+	public int getValuePref(SharedPreferences sharedPref, String name,
+			int valrtn) {
+		return sharedPref.getInt(name, valrtn);
+	}
+
+	public void setValuePref(SharedPreferences sharedPref, String name,
+			int value) {
+		SharedPreferences.Editor editor = sharedPref.edit();
+		editor.putInt(name, value);
+		editor.commit();
 	}
 
 }

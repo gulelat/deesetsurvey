@@ -11,6 +11,7 @@ import org.ksoap2.serialization.SoapObject;
 
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteDatabase.CursorFactory;
@@ -25,12 +26,15 @@ public class DBAdapter {
 	private static final String DATABASE_NAME = "dbdeesetsurvey";
 	private static final int VERSION = 1;
 	private ContentValues content;
+	private SharedPreferences mSharedPref;
 
 	public static final String TABLE_USER = "TblUser";
 	public static final String TABLE_CHAIN = "TblChain";
 	public static final String TABLE_STORE = "TblStore";
 	public static final String TABLE_TIMEUPDATE = "TblTimeUpdate";
 	public static final String TABLE_SURVEY = "TblSurvey";
+	public static final String TABLE_SURVEYDETAIL = "TblSurveyDetail";
+	public static final String TABLE_SURVEYQUESTION = "TblSurveyQuestion";
 	public static final String TABLE_QUESTION = "TblQuestion";
 	public static final String TABLE_ANSWER = "TblAnswer";
 	public static final String TABLE_RESULT = "TblResult";
@@ -145,6 +149,8 @@ public class DBAdapter {
 
 	public DBAdapter(Context ctx) {
 		this.ctx = ctx;
+		mSharedPref = ctx.getSharedPreferences("DeesetSurveyPref",
+				Context.MODE_PRIVATE);
 	}
 
 	public DBAdapter open() {
@@ -156,7 +162,7 @@ public class DBAdapter {
 	public void close() {
 		mDBHelper.close();
 	}
-	
+
 	public boolean isOpen() {
 		if (mDB.isOpen()) {
 			return true;
@@ -173,8 +179,10 @@ public class DBAdapter {
 			String insertUser = "INSERT INTO " + TABLE_USER
 					+ "(UserID, Username, Password) VALUES('"
 					+ content.getAsString("UserID") + "','"
-					+ content.getAsString("Username") + "','"
-					+ content.getAsString("Password") + "');";
+					+ content.getAsString("Username").replaceAll("'", "''")
+					+ "','"
+					+ content.getAsString("Password").replaceAll("'", "''")
+					+ "');";
 			mDB.execSQL(insertUser);
 			mDB.setTransactionSuccessful();
 		} catch (Exception e) {
@@ -194,10 +202,13 @@ public class DBAdapter {
 			while (row < total) {
 				SoapObject object = (SoapObject) soap.getProperty(row);
 				if (Boolean.valueOf(object.getPropertyAsString("isActive"))) {
-					String insertChain = "INSERT INTO " + TABLE_CHAIN
+					String insertChain = "INSERT INTO "
+							+ TABLE_CHAIN
 							+ "(ChainID, ChainName) VALUES('"
-							+ object.getPropertyAsString("id") + "','"
-							+ object.getPropertyAsString("name") + "');";
+							+ object.getPropertyAsString("id")
+							+ "','"
+							+ object.getPropertyAsString("name").replaceAll(
+									"'", "''") + "');";
 					mDB.execSQL(insertChain);
 				}
 				row++;
@@ -238,11 +249,14 @@ public class DBAdapter {
 			while (row < total) {
 				SoapObject object = (SoapObject) soap.getProperty(row);
 				if (Boolean.valueOf(object.getPropertyAsString("IsActive"))) {
-					String insertStore = "INSERT INTO " + TABLE_STORE
+					String insertStore = "INSERT INTO "
+							+ TABLE_STORE
 							+ "(StoreID, StoreName, ChainID) VALUES('"
-							+ object.getPropertyAsString("fld_lng_ID") + "','"
+							+ object.getPropertyAsString("fld_lng_ID")
+							+ "','"
 							+ object.getPropertyAsString("fld_str_Name")
-							+ "','" + chainId + "')";
+									.replaceAll("'", "''") + "','" + chainId
+							+ "')";
 					mDB.execSQL(insertStore);
 				}
 				row++;
@@ -270,23 +284,26 @@ public class DBAdapter {
 		}
 	}
 
-	public void insertSurvey(SoapObject soap, String storeId,
-			String type, long longTimeUpdate) {
+	public void insertSurvey(SoapObject soap, String storeId, String type,
+			long longTimeUpdate) {
 		try {
 			mDB.beginTransaction();
 			String deleteSurvey = "DELETE FROM " + TABLE_SURVEY
-					+ " WHERE StoreID='" + storeId + "' AND Type='"
-					+ type + "'";
+					+ " WHERE StoreID='" + storeId + "' AND Type='" + type
+					+ "'";
 			mDB.execSQL(deleteSurvey);
 			int total = soap.getPropertyCount();
 			int row = 0;
 			while (row < total) {
 				SoapObject object = (SoapObject) soap.getProperty(row);
-				String insertSurvey = "INSERT INTO " + TABLE_SURVEY
+				String insertSurvey = "INSERT INTO "
+						+ TABLE_SURVEY
 						+ "(SurveyID, SurveyName, StoreID, Type) VALUES('"
-						+ object.getPropertyAsString("SurveyID") + "','"
-						+ object.getPropertyAsString("Survey_Name") + "','"
-						+ storeId + "', '" + type + "')";
+						+ object.getPropertyAsString("SurveyID")
+						+ "','"
+						+ object.getPropertyAsString("Survey_Name").replaceAll(
+								"'", "''") + "','" + storeId + "', '" + type
+						+ "')";
 				mDB.execSQL(insertSurvey);
 				row++;
 			}
@@ -313,8 +330,131 @@ public class DBAdapter {
 		}
 	}
 
-	public ArrayList<ContentValues> queryData(String strTable, String strQuery,
-			String[] strParams) {
+	public void insertSurveyQuestions(SoapObject soap, String surveyId,
+			long longTimeUpdate) {
+		try {
+			mDB.beginTransaction();
+			String deleteSurveyQuestions = "DELETE FROM "
+					+ TABLE_SURVEYQUESTION + " WHERE SurveyID='" + surveyId
+					+ "'";
+			mDB.execSQL(deleteSurveyQuestions);
+			int total = soap.getPropertyCount();
+			int row = 0;
+			while (row < total) {
+				SoapObject object = (SoapObject) soap.getProperty(row);
+				if (Boolean.valueOf(object
+						.getPropertyAsString("Question_IsActive"))) {
+					String questionId = object
+							.getPropertyAsString("Question_ID");
+					String insertSurveyQuestions = "INSERT INTO "
+							+ TABLE_SURVEYQUESTION
+							+ "(QuestionID, NumOrder, SurveyID) VALUES('"
+							+ questionId + "','"
+							+ object.getPropertyAsString("Question_Order")
+							+ "','" + surveyId + "')";
+					mDB.execSQL(insertSurveyQuestions);
+					String deleteQuestions = "DELETE FROM " + TABLE_QUESTION
+							+ " WHERE QuestionID='" + questionId + "'";
+					mDB.execSQL(deleteQuestions);
+					String insertQuestions = "INSERT INTO "
+							+ TABLE_QUESTION
+							+ "(QuestionID, Content, Type) VALUES('"
+							+ questionId
+							+ "','"
+							+ object.getPropertyAsString("Question_Title")
+									.replaceAll("'", "''") + "','"
+							+ object.getPropertyAsString("Question_Type")
+							+ "')";
+					mDB.execSQL(insertQuestions);
+				}
+				row++;
+			}
+			if (row == total) {
+				String timeUpdate;
+				if (longTimeUpdate == -1) {
+					timeUpdate = "INSERT INTO " + TABLE_TIMEUPDATE
+							+ "(LogID, TypeID, Time) VALUES('" + LOG_SURVEY
+							+ "', '" + surveyId + "', '"
+							+ Calendar.getInstance().getTimeInMillis() + "')";
+				} else {
+					timeUpdate = "UPDATE " + TABLE_TIMEUPDATE + " SET TIME='"
+							+ Calendar.getInstance().getTimeInMillis()
+							+ "' WHERE LogID='" + LOG_SURVEY + "' AND TypeID='"
+							+ surveyId + "'";
+				}
+				mDB.execSQL(timeUpdate);
+				mDB.setTransactionSuccessful();
+			}
+		} catch (Exception e) {
+			mDB.endTransaction();
+		} finally {
+			mDB.endTransaction();
+		}
+	}
+
+	public void insertQuestionAnswers(SoapObject soap, String questionId,
+			long longTimeUpdate) {
+		try {
+			mDB.beginTransaction();
+			String deleteAnswers = "DELETE FROM " + TABLE_ANSWER
+					+ " WHERE QuestionID='" + questionId + "'";
+			mDB.execSQL(deleteAnswers);
+			int total = soap.getPropertyCount();
+			int row = 0;
+			while (row < total) {
+				SoapObject object = (SoapObject) soap.getProperty(row);
+				String insertAnswers = "INSERT INTO "
+						+ TABLE_ANSWER
+						+ "(QuestionID, Answer) VALUES('"
+						+ questionId
+						+ "','"
+						+ object.getPropertyAsString("Question_Answer_Value")
+								.replaceAll("'", "''") + "')";
+				mDB.execSQL(insertAnswers);
+				row++;
+			}
+			if (row == 0) {
+				String insertAnswers = "INSERT INTO " + TABLE_ANSWER
+						+ "(QuestionID, Answer) VALUES('" + questionId
+						+ "','')";
+				mDB.execSQL(insertAnswers);
+			}
+			if (row == total) {
+				mDB.setTransactionSuccessful();
+			}
+		} catch (Exception e) {
+			mDB.endTransaction();
+		} finally {
+			mDB.endTransaction();
+		}
+	}
+
+	public void insertResults(ContentValues content) {
+		try {
+			mDB.beginTransaction();
+			String insertAnswers = "INSERT INTO "
+					+ TABLE_RESULT
+					+ "(UserID, StoreID, SurveyID, QuestionOrder, Question, Answer, Upload) VALUES('"
+					+ content.getAsString("UserID") + "','"
+					+ content.getAsString("StoreID") + "','"
+					+ content.getAsString("SurveyID") + "','"
+					+ content.getAsString("QuestionOrder") + "','"
+					+ content.getAsString("Question").replaceAll("'", "''")
+					+ "','"
+					+ content.getAsString("Answer").replaceAll("'", "''")
+					+ "','" + "0')";
+			mDB.execSQL(insertAnswers);
+			mDB.setTransactionSuccessful();
+			setValuePref(mSharedPref, "upload", 0);
+		} catch (Exception e) {
+			mDB.endTransaction();
+		} finally {
+			mDB.endTransaction();
+		}
+	}
+
+	public ArrayList<ContentValues> queryDatas(String strTable,
+			String strQuery, String[] strParams) {
 		ArrayList<ContentValues> alstData = new ArrayList<ContentValues>();
 		Cursor cur = mDB.query(strTable, null, strQuery, strParams, null, null,
 				null);
@@ -326,6 +466,48 @@ public class DBAdapter {
 			cur.moveToNext();
 		}
 		cur.close();
+		return alstData;
+	}
+
+	public ContentValues queryData(String strTable, String strQuery,
+			String[] strParams) {
+		Cursor cur = mDB.query(strTable, null, strQuery, strParams, null, null,
+				null);
+		cur.moveToFirst();
+		if (cur != null) {
+			content = new ContentValues();
+			getDataSurveys(strTable, cur);
+		}
+		cur.close();
+		return content;
+	}
+
+	public ArrayList<ContentValues> queryQuestions(String strSurveyId) {
+		ArrayList<ContentValues> alstData = new ArrayList<ContentValues>();
+		String strSQL = "SELECT * FROM TblSurveyQuestion WHERE SurveyID=? ORDER BY NumOrder ASC";
+		Cursor cur = mDB.rawQuery(strSQL, new String[] { strSurveyId });
+		cur.moveToFirst();
+		while (cur.isAfterLast() == false) {
+			content = new ContentValues();
+			getDataSurveys(DBAdapter.TABLE_SURVEYQUESTION, cur);
+			alstData.add(content);
+			cur.moveToNext();
+		}
+		cur.close();
+		return alstData;
+	}
+
+	public ArrayList<ContentValues> querySurveyQuestions(String strSurveyId) {
+		ArrayList<ContentValues> alstData = new ArrayList<ContentValues>();
+		ArrayList<ContentValues> alstQuestion = queryQuestions(strSurveyId);
+		ContentValues cont;
+		for (int i = 0; i < alstQuestion.size(); i++) {
+			cont = new ContentValues();
+			cont = queryData(TABLE_QUESTION, "QuestionID=?",
+					new String[] { alstQuestion.get(i)
+							.getAsString("QuestionID") });
+			alstData.add(cont);
+		}
 		return alstData;
 	}
 
@@ -358,6 +540,15 @@ public class DBAdapter {
 		}
 		if (strTable.equals(DBAdapter.TABLE_SURVEY)) {
 			getSurveys(cur);
+		}
+		if (strTable.equals(DBAdapter.TABLE_SURVEYQUESTION)) {
+			getSurveyQuestions(cur);
+		}
+		if (strTable.equals(DBAdapter.TABLE_QUESTION)) {
+			getQuestions(cur);
+		}
+		if (strTable.equals(DBAdapter.TABLE_ANSWER)) {
+			getAnswers(cur);
 		}
 		if (strTable.equals(DBAdapter.TABLE_RESULT)) {
 			getSubmitSurveys(cur);
@@ -395,7 +586,7 @@ public class DBAdapter {
 		content.put("ChainID",
 				cur.getString(cur.getColumnIndexOrThrow("ChainID")));
 	}
-	
+
 	public void getSurveys(Cursor cur) {
 		content.put("SurveyID",
 				cur.getString(cur.getColumnIndexOrThrow("SurveyID")));
@@ -403,8 +594,31 @@ public class DBAdapter {
 				cur.getString(cur.getColumnIndexOrThrow("SurveyName")));
 		content.put("StoreID",
 				cur.getString(cur.getColumnIndexOrThrow("StoreID")));
-		content.put("Type",
-				cur.getString(cur.getColumnIndexOrThrow("Type")));
+		content.put("Type", cur.getString(cur.getColumnIndexOrThrow("Type")));
+	}
+
+	public void getSurveyQuestions(Cursor cur) {
+		content.put("QuestionID",
+				cur.getString(cur.getColumnIndexOrThrow("QuestionID")));
+		content.put("Order",
+				cur.getString(cur.getColumnIndexOrThrow("NumOrder")));
+		content.put("SurveyID",
+				cur.getString(cur.getColumnIndexOrThrow("SurveyID")));
+	}
+
+	public void getQuestions(Cursor cur) {
+		content.put("QuestionID",
+				cur.getString(cur.getColumnIndexOrThrow("QuestionID")));
+		content.put("Content",
+				cur.getString(cur.getColumnIndexOrThrow("Content")));
+		content.put("Type", cur.getString(cur.getColumnIndexOrThrow("Type")));
+	}
+
+	public void getAnswers(Cursor cur) {
+		content.put("QuestionID",
+				cur.getString(cur.getColumnIndexOrThrow("QuestionID")));
+		content.put("Answer",
+				cur.getString(cur.getColumnIndexOrThrow("Answer")));
 	}
 
 	public void getSubmitSurveys(Cursor cur) {
@@ -420,6 +634,20 @@ public class DBAdapter {
 				cur.getString(cur.getColumnIndexOrThrow("Question")));
 		content.put("Answer",
 				cur.getString(cur.getColumnIndexOrThrow("Answer")));
+		content.put("Upload",
+				cur.getString(cur.getColumnIndexOrThrow("Upload")));
+	}
+	
+	public int getValuePref(SharedPreferences sharedPref, String name,
+			int valrtn) {
+		return sharedPref.getInt(name, valrtn);
+	}
+
+	public void setValuePref(SharedPreferences sharedPref, String name,
+			int value) {
+		SharedPreferences.Editor editor = sharedPref.edit();
+		editor.putInt(name, value);
+		editor.commit();
 	}
 
 }

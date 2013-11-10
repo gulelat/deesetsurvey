@@ -1,1 +1,10 @@
-CREATE TABLE "TblResult" ("UserID" TEXT, "StoreID" TEXT, "SurveyID" TEXT, "QuestionOrder" TEXT, "Question" TEXT, "Answer" TEXT);
+CREATE TABLE "TblTimeUpdate" ("LogID" TEXT, "TypeID" TEXT, "Time" TEXT);
+CREATE TABLE "TblUser" ("UserID" TEXT, "Username" TEXT, "Password" TEXT);
+CREATE TABLE "TblChain" ("ChainID" TEXT, "ChainName" TEXT);
+CREATE TABLE "TblStore" ("StoreID" TEXT, "StoreName" TEXT, "ChainID" TEXT);
+CREATE TABLE "TblSurvey" ("SurveyID" TEXT, "SurveyName" TEXT, "StoreID" TEXT, "Type" TEXT);
+CREATE TABLE "TblSurveyDetail" ("SurveyID" TEXT, "SurveyName" TEXT);
+CREATE TABLE "TblSurveyQuestion" ("QuestionID" TEXT, "NumOrder" TEXT, "SurveyID" TEXT);
+CREATE TABLE "TblQuestion" ("QuestionID" TEXT, "Content" TEXT, "Type" TEXT);
+CREATE TABLE "TblAnswer" ("QuestionID" TEXT, "Answer" TEXT);
+CREATE TABLE "TblResult" ("UserID" TEXT, "StoreID" TEXT, "SurveyID" TEXT, "QuestionOrder" TEXT, "Question" TEXT, "Answer" TEXT, "Upload" TEXT);
