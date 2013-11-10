@@ -7,12 +7,15 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
+
 import org.ksoap2.serialization.SoapObject;
+
 import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
@@ -23,6 +26,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.Toast;
+
 import com.deeset.deesetsurvey.controller.ConnectionDetector;
 import com.deeset.deesetsurvey.model.DBAdapter;
 import com.deeset.deesetsurvey.model.JDBCAdapter;
@@ -50,14 +54,6 @@ public class Login extends Activity {
 		mDB.open();
 		if (!conDetect.isConnectingToInternet()) {
 			conDetect.showSettingsAlert();
-		}
-	}
-
-	@Override
-	protected void onStop() {
-		super.onPause();
-		if (mDB.isOpen()) {
-			mDB.close();
 		}
 	}
 
@@ -116,7 +112,7 @@ public class Login extends Activity {
 		@Override
 		protected String doInBackground(String... params) {
 			if (!mBlnOnline) {
-				ArrayList<ContentValues> alst = mDB.queryData(
+				ArrayList<ContentValues> alst = mDB.queryDatas(
 						DBAdapter.TABLE_USER, "Username=? AND Password=?",
 						new String[] { mAlstWS.get(2), mAlstWS.get(5) });
 				if (alst.size() != 0) {
@@ -154,6 +150,7 @@ public class Login extends Activity {
 								"You're offline! Survey data can not appropriate! Please connect internet!",
 								Toast.LENGTH_SHORT).show();
 					}
+					GlobalInfo.setUserName(mAlstWS.get(2));
 					startSurvey(mCtx, strResult);
 				}
 			}
@@ -221,6 +218,18 @@ public class Login extends Activity {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+	
+	public int getValuePref(SharedPreferences sharedPref, String name,
+			int valrtn) {
+		return sharedPref.getInt(name, valrtn);
+	}
+
+	public void setValuePref(SharedPreferences sharedPref, String name,
+			int value) {
+		SharedPreferences.Editor editor = sharedPref.edit();
+		editor.putInt(name, value);
+		editor.commit();
 	}
 
 }

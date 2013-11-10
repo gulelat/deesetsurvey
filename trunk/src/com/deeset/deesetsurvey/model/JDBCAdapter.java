@@ -87,8 +87,7 @@ public class JDBCAdapter {
 		return soapOject;
 	}
 
-	public String interactServerString(ArrayList<String> alstWS, String strMethod) {
-		String strResult = "";
+	public int interactServerSimple(ArrayList<String> alstWS, String strMethod) {
 		connectToWS(strMethod);
 		for (int i = 0; i < alstWS.size(); i++) {
 			addTypeParams(alstWS.get(i), alstWS.get(++i), alstWS.get(++i));
@@ -98,14 +97,14 @@ public class JDBCAdapter {
 		String SOAP_ACTION = JDBCAdapter.NAMESPACE + strMethod;
 		try {
 			androidHttpTransport.call(SOAP_ACTION, envelope);
-			strResult = envelope.getResponse().toString();
+			Log.i("insert", envelope.getResponse().toString());
+			return JDBCAdapter.RESULT_OK;
 		} catch (IOException e) {
 			Log.i("IOException", e.getMessage());
 		} catch (XmlPullParserException e) {
 			Log.i("XmlPullParserException", e.getMessage());
 		}
-		Log.i("insert", strResult);
-		return strResult;
+		return JDBCAdapter.RESULT_NOTCONNECT;
 	}
 	
 	private void addTypeParams(String strType, String strKey, String strValue) {

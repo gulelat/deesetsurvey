@@ -16,6 +16,7 @@ import android.app.ProgressDialog;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
@@ -188,13 +189,13 @@ public class StaticSurveys extends Activity {
 		}
 
 		private boolean querySurvey() {
-			ArrayList<ContentValues> alstStaticSurvey = mDB.queryData(
+			ArrayList<ContentValues> alstStaticSurvey = mDB.queryDatas(
 					DBAdapter.TABLE_SURVEY, "StoreID = ? AND Type = 1",
 					new String[] { mAlstWS.get(2) });
-			ArrayList<ContentValues> alstCurrentSurvey = mDB.queryData(
+			ArrayList<ContentValues> alstCurrentSurvey = mDB.queryDatas(
 					DBAdapter.TABLE_SURVEY, "StoreID = ? AND Type = 0",
 					new String[] { mAlstWS.get(2) });
-			if (alstStaticSurvey.size() != 0 || alstCurrentSurvey.size() != 0) {
+			if (alstStaticSurvey.size() > 0 || alstCurrentSurvey.size() > 0) {
 				for (ContentValues contentValues : alstStaticSurvey) {
 					mAlstStaticSurveyTitle.add(contentValues
 							.getAsString("SurveyName"));
@@ -243,15 +244,13 @@ public class StaticSurveys extends Activity {
 							} else {
 								initialStaticSurveys();
 							}
-						}
-						if (!mBlnShowProDialog) {
-							startUpdateCurrentSurvey(false);
-						} else {
 							startUpdateCurrentSurvey(true);
+						} else {
+							startUpdateCurrentSurvey(false);
 						}
 					}
 					if (mStrMethod
-							.equals(JDBCAdapter.METHOD_GETSTATICSURVEYDATA)) {
+							.equals(JDBCAdapter.METHOD_GETCURRENTSURVEYDATA)) {
 						if (mBlnShowProDialog) {
 							if (!querySurvey()) {
 								GlobalInfo.showToast(mCtx,
@@ -265,8 +264,9 @@ public class StaticSurveys extends Activity {
 					if (result == JDBCAdapter.RESULT_EMPTYDATA) {
 						if (mStrMethod
 								.equals(JDBCAdapter.METHOD_GETSTATICSURVEYDATA)) {
-							GlobalInfo.showToast(mCtx, JDBCAdapter.STR_EMPTYDATA
-									+ "store " + mStrStoreName + "!");
+							GlobalInfo.showToast(mCtx,
+									JDBCAdapter.STR_EMPTYDATA + "store "
+											+ mStrStoreName + "!");
 						}
 					} else {
 						GlobalInfo.showToast(mCtx, JDBCAdapter.STR_NOCONNECT);
@@ -279,7 +279,8 @@ public class StaticSurveys extends Activity {
 		private void startUpdateStaticSurvey(boolean blnShowProDialog) {
 			InteractServer actServer = new InteractServer(mCtx,
 					"Get static surveys",
-					JDBCAdapter.METHOD_GETSTATICSURVEYDATA, blnShowProDialog, true);
+					JDBCAdapter.METHOD_GETSTATICSURVEYDATA, blnShowProDialog,
+					true);
 			actServer.addParam(JDBCAdapter.TYPE_INTEGER, "StoreID",
 					mAlstWS.get(2));
 			actServer.addParam(JDBCAdapter.TYPE_STRING, "startDate",
@@ -292,7 +293,8 @@ public class StaticSurveys extends Activity {
 		private void startUpdateCurrentSurvey(boolean blnShowProDialog) {
 			InteractServer actServer = new InteractServer(mCtx,
 					"Get current surveys",
-					JDBCAdapter.METHOD_GETCURRENTSURVEYDATA, blnShowProDialog, true);
+					JDBCAdapter.METHOD_GETCURRENTSURVEYDATA, blnShowProDialog,
+					true);
 			actServer.addParam(JDBCAdapter.TYPE_INTEGER, "StoreID",
 					mAlstWS.get(2));
 			actServer.execute();
@@ -367,14 +369,6 @@ public class StaticSurveys extends Activity {
 		}
 		startActivity(intent);
 	}
-	
-	@Override
-	protected void onStop() {
-		super.onPause();
-		if (mDB.isOpen()) {
-			mDB.close();
-		}
-	}
 
 	@Override
 	protected void onResume() {
@@ -384,4 +378,16 @@ public class StaticSurveys extends Activity {
 		}
 	}
 	
+	public int getValuePref(SharedPreferences sharedPref, String name,
+			int valrtn) {
+		return sharedPref.getInt(name, valrtn);
+	}
+
+	public void setValuePref(SharedPreferences sharedPref, String name,
+			int value) {
+		SharedPreferences.Editor editor = sharedPref.edit();
+		editor.putInt(name, value);
+		editor.commit();
+	}
+
 }

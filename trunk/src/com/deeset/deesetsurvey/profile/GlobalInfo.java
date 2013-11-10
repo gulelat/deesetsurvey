@@ -6,11 +6,20 @@ import android.widget.Toast;
 public class GlobalInfo {
 
 	private static String userId;
+	private static String userName;
 	private static String storeId;
 	private static String storeName;
 	private static String surveyId;
 	private static String surveyName;
 
+	public static String getUserName() {
+		return userName;
+	}
+
+	public static void setUserName(String userName) {
+		GlobalInfo.userName = userName;
+	}
+	
 	public static String getSurveyId() {
 		return surveyId;
 	}

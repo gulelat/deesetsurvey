@@ -6,6 +6,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -19,8 +20,10 @@ import com.deeset.deesetsurvey.controller.DynamicViews;
 import com.deeset.deesetsurvey.controller.SurveyQuestion;
 import com.deeset.deesetsurvey.model.DBAdapter;
 import com.deeset.deesetsurvey.model.JDBCAdapter;
+import com.deeset.deesetsurvey.profile.GlobalInfo;
 import com.deeset.deesetsurvey.controller.UploadFile;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
@@ -28,6 +31,7 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -43,6 +47,7 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.View.OnClickListener;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -56,7 +61,8 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
-public class FieldSurvey extends Activity {
+@SuppressLint("UseSparseArrays")
+public class FieldSurvey extends Activity implements OnClickListener {
 
 	private DBAdapter mDB;
 
@@ -80,9 +86,11 @@ public class FieldSurvey extends Activity {
 	private String mStrPathSign = "";
 	private String mStrUsername = "";
 	private String mStrTimestamp = "";
-	private boolean mBlnCamera, mBlPhoto = false;
+	private boolean mBlnCamera;
 	private AtomicInteger mAtomicInt;
-	private int mIntCamareGalleryResult;
+	private ArrayList<ContentValues> alButtonPhoto;
+	private HashMap<Integer, ImageView> hashPhoto;
+	private int mIntCamareGalleryResult = -1;
 	private int CAMERA_RESULT = 12345;
 	private int GALLERY_RESULT = 54321;
 
@@ -96,14 +104,9 @@ public class FieldSurvey extends Activity {
 		window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 		setContentView(R.layout.fieldsurvey);
 
-		initialConnects();
 		initialViews();
 		getIntentValues();
 		loadStaticSurveysQuestion();
-	}
-
-	private void initialConnects() {
-		mDB = new DBAdapter(this);
 	}
 
 	private void initialViews() {
@@ -114,16 +117,19 @@ public class FieldSurvey extends Activity {
 	}
 
 	private void getIntentValues() {
-		mStrUserId = getIntent().getStringExtra("userid");
-		mStrStoreId = getIntent().getStringExtra("storeid");
-		mStrStoreName = getIntent().getStringExtra("storename");
-		mStrSurveyId = getIntent().getStringExtra("surveyid");
-		mStrSurveyName = getIntent().getStringExtra("surveyname");
+		mStrUserId = GlobalInfo.getUserId();
+		mStrUsername = GlobalInfo.getUserName();
+		mStrStoreId = GlobalInfo.getStoreId();
+		mStrStoreName = GlobalInfo.getStoreName();
+		mStrSurveyId = GlobalInfo.getSurveyId();
+		mStrSurveyName = GlobalInfo.getSurveyName();
 		mTxtSurveyName.setText(Html.fromHtml("<b>Survey Name</b> - "
 				+ mStrSurveyName));
 		mTxtStoreName
 				.setText(Html.fromHtml("<b>Store </b> - " + mStrStoreName));
 		mTxtVisitDate.setText(FieldSurvey.getDateSurvey());
+		mDB = new DBAdapter(this);
+		mDB.open();
 	}
 
 	public static String getDateSurvey() {
@@ -141,11 +147,12 @@ public class FieldSurvey extends Activity {
 		mArrLstSurCont = new ArrayList<SurveyQuestion>();
 		mArrlstAnswer = new ArrayList<String>();
 		mAtomicInt = new AtomicInteger(0);
-		mIntCamareGalleryResult = mAtomicInt.getAndIncrement();
+		alButtonPhoto = new ArrayList<ContentValues>();
+		hashPhoto = new HashMap<Integer, ImageView>();
 
 		if (mStrUserId != null && mStrStoreId != null && mStrSurveyId != null) {
-			InteractServer actServer = new InteractServer(this,
-					"Get questions data", JDBCAdapter.METHOD_GETQUESTIONSDATA);
+			InteractServer actServer = new InteractServer(this, "Get data",
+					JDBCAdapter.METHOD_GETQUESTIONSDATA, true, false);
 			actServer.addParam(JDBCAdapter.TYPE_INTEGER, "Question_SurveyID",
 					mStrSurveyId);
 			actServer.execute();
@@ -285,38 +292,36 @@ public class FieldSurvey extends Activity {
 		Log.i("Answer", mArrLstSurCont.get(intIndex).getmArrLstAns().get(0));
 	}
 
-	private void loadButton(SurveyQuestion surQues, final int intIndex) {
+	private void loadButton(SurveyQuestion surQues, int intIndex) {
 		TextView txt = mDynaViews.initialTextView(surQues.getmStrQuesCont(),
 				false);
 		mLiLayFieldSurvey.addView(txt);
 		ImageView img = mDynaViews.initialImageView(420, 420);
-		img.setId(mIntCamareGalleryResult);
+		img.setId(mAtomicInt.getAndIncrement());
 		img.setBackgroundResource(R.drawable.border);
 		img.setPadding(2, 2, 2, 2);
-		mLiLayFieldSurvey.addView(img);
+		hashPhoto.put(img.getId(), img);
+		mLiLayFieldSurvey.addView(hashPhoto.get(img.getId()));
 		LinearLayout llayout = new LinearLayout(this);
 		LinearLayout llayoutCamera = new LinearLayout(this);
 		Button btnCamera = mDynaViews.initialButton(160, 64, "Camera");
-		btnCamera.setOnClickListener(new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				Intent cameraIntent = new Intent(
-						android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
-				CAMERA_RESULT = intIndex;
-				startActivityForResult(cameraIntent, CAMERA_RESULT);
-			}
-		});
+		btnCamera.setId(mAtomicInt.getAndIncrement());
+		btnCamera.setOnClickListener(this);
+		ContentValues contentCamera = new ContentValues();
+		contentCamera.put("idControl", btnCamera.getId());
+		contentCamera.put("idImageView", img.getId());
+		contentCamera.put("type", 0);
+		contentCamera.put("index", intIndex);
+		alButtonPhoto.add(contentCamera);
 		Button btnGallery = mDynaViews.initialButton(160, 64, "Gallery");
-		btnGallery.setOnClickListener(new View.OnClickListener() {
-			@Override
-			public void onClick(View v) {
-				Intent intent = new Intent(
-						Intent.ACTION_PICK,
-						android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-				GALLERY_RESULT = intIndex;
-				startActivityForResult(intent, GALLERY_RESULT);
-			}
-		});
+		btnGallery.setId(mAtomicInt.getAndIncrement());
+		btnGallery.setOnClickListener(this);
+		ContentValues contentGallery = new ContentValues();
+		contentGallery.put("idControl", btnGallery.getId());
+		contentGallery.put("idImageView", img.getId());
+		contentGallery.put("type", 1);
+		contentGallery.put("index", intIndex);
+		alButtonPhoto.add(contentGallery);
 		llayout.setOrientation(LinearLayout.HORIZONTAL);
 		llayoutCamera.addView(btnCamera);
 		llayoutCamera.setPadding(0, 0, 64, 0);
@@ -391,23 +396,45 @@ public class FieldSurvey extends Activity {
 	}
 
 	public void submitSurveyQuestions(View v) {
+		for (int i = 0; i < alButtonPhoto.size(); i++) {
+			if (alButtonPhoto.get(i).getAsInteger("idControl") == mIntCamareGalleryResult) {
+				hashPhoto.get(
+						alButtonPhoto.get(i).getAsInteger("idImageView"))
+						.setImageBitmap(null);
+			}
+		}
 		mStrTimestamp = String
 				.valueOf(Calendar.getInstance().getTimeInMillis());
 		new SendSurvey(this).execute();
 	}
 
 	private void insertAnswerDB(int intSeqNum, String strQuesCont,
-			String strAnswer) {
+			String strQuesId, String strAnswer, String image) {
 		ContentValues content = new ContentValues();
 		content.put("UserID", mStrUserId);
 		content.put("StoreID", mStrStoreId);
 		content.put("SurveyID", mStrSurveyId);
 		content.put("QuestionOrder", intSeqNum);
-		content.put("Question", strQuesCont);
-		content.put("Answer", strAnswer);
-		mDB.open();
-		//mDB.insertData("TblResult", content);
-		mDB.close();
+		content.put("Question", strQuesCont + "@#@" + strQuesId);
+		if (image.equals("9")) {
+			content.put("Answer", strAnswer + "@#@"
+					+ "ftp://deeset\\mobileorders@81.171.198.188/mobileorders/"
+					+ mStrUsername + "-" + mStrTimestamp + "-photo.jpg");
+		} else {
+			if (image.equals("11")) {
+				content.put(
+						"Answer",
+						strAnswer
+								+ "@#@"
+								+ "ftp://deeset\\mobileorders@81.171.198.188/mobileorders/"
+								+ mStrUsername + "-" + mStrTimestamp
+								+ "-signature.png");
+			} else {
+				content.put("Answer", strAnswer);
+			}
+		}
+		content.put("Upload", 0);
+		mDB.insertResults(content);
 	}
 
 	private void putIntentValues(Intent intent) {
@@ -479,7 +506,8 @@ public class FieldSurvey extends Activity {
 				strBuff.append(ckb.getText().toString() + "\n");
 			}
 		}
-		if (i == surveyQuestion.getmIntIdChild().size()) {
+		if (i == surveyQuestion.getmIntIdChild().size()
+				&& !strBuff.toString().equals("")) {
 			mArrlstAnswer.add(strBuff.toString());
 			return true;
 		} else {
@@ -525,29 +553,11 @@ public class FieldSurvey extends Activity {
 	}
 
 	@Override
-	protected void onResume() {
-		if (mStrPathPhoto.equals("") == false) {
-			File file = new File(mStrPathPhoto);
-			if (file.exists()) {
-				ImageView img = (ImageView) findViewById(mIntCamareGalleryResult);
-				img.setImageBitmap(BitmapFactory.decodeFile(mStrPathPhoto));
-			}
-		}
-		super.onResume();
-	}
-
-	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
 		if (requestCode == CAMERA_RESULT) {
 			if (null != data && resultCode == RESULT_OK) {
 				mBlnCamera = true;
-				mBlPhoto = true;
-
-				ImageView img = (ImageView) findViewById(mIntCamareGalleryResult);
-				if (mStrPathPhoto.equals("") == false) {
-					img.setImageBitmap(null);
-				}
 
 				Uri selectedImage = data.getData();
 				String[] filePathColumn = { MediaStore.Images.Media.DATA };
@@ -557,6 +567,7 @@ public class FieldSurvey extends Activity {
 				int columnIndex = cursor.getColumnIndex(filePathColumn[0]);
 				mStrPathPhoto = cursor.getString(columnIndex);
 				cursor.close();
+
 				updateAnsSurvey(CAMERA_RESULT, mStrPathPhoto);
 				CAMERA_RESULT = 12345;
 			} else {
@@ -567,12 +578,6 @@ public class FieldSurvey extends Activity {
 		if (requestCode == GALLERY_RESULT) {
 			if (null != data && resultCode == RESULT_OK) {
 				mBlnCamera = false;
-				mBlPhoto = true;
-
-				ImageView img = (ImageView) findViewById(mIntCamareGalleryResult);
-				if (mStrPathPhoto.equals("") == false) {
-					img.setImageBitmap(null);
-				}
 
 				Uri selectedImage = data.getData();
 				String[] filePathColumn = { MediaStore.Images.Media.DATA };
@@ -582,6 +587,7 @@ public class FieldSurvey extends Activity {
 				int columnIndex = cursor.getColumnIndex(filePathColumn[0]);
 				mStrPathPhoto = cursor.getString(columnIndex);
 				cursor.close();
+
 				updateAnsSurvey(GALLERY_RESULT, mStrPathPhoto);
 				GALLERY_RESULT = 54321;
 			} else {
@@ -645,15 +651,6 @@ public class FieldSurvey extends Activity {
 		}
 
 		@Override
-		protected void onProgressUpdate(Integer... values) {
-			if (mBlPhoto) {
-				ImageView img = (ImageView) findViewById(mIntCamareGalleryResult);
-				img.setImageBitmap(null);
-			}
-			super.onProgressUpdate(values);
-		}
-
-		@Override
 		protected String doInBackground(String... params) {
 			mArrlstAnswer.clear();
 			for (int i = 0; i < mArrLstSurCont.size(); i++) {
@@ -662,69 +659,50 @@ public class FieldSurvey extends Activity {
 				}
 			}
 
-			publishProgress(0);
-
 			Log.i("Answers", mArrlstAnswer.toString());
 			Log.i("Question Contain", mArrLstSurCont.size() + "");
 			for (int i = 0; i < mArrLstSurCont.size(); i++) {
 				insertAnswerDB((i + 1),
-						mArrLstSurCont.get(i).getmStrQuesCont(),
-						mArrlstAnswer.get(i));
+						mArrLstSurCont.get(i).getmStrQuesCont(), mArrLstSurCont
+								.get(i).getmStrQuesId(), mArrlstAnswer.get(i),
+						mArrLstSurCont.get(i).getmStrType());
 			}
 
-			String strResult;
-			do {
-				strResult = uploadFile(mStrPathSign);
-			} while (strResult.equals("fail") == true);
-
-			resizePhotoUpload();
-
-			do {
-				strResult = uploadFile(mStrPathPhotoUpload);
-			} while (strResult.equals("fail") == true);
-
-			File file = new File(mStrPathPhotoUpload);
-			if (file.exists()) {
-				file.delete();
-				mStrPathPhotoUpload = "";
-			}
+			
 
 			return "error";
 		}
 
 		private void uploadData() {
-			InteractServer actServer = new InteractServer(mCtx,
-					"Upload data this survey",
-					JDBCAdapter.METHOD_INSERTSURVEYANSWER);
-			for (int i = 0; i < mArrLstSurCont.size(); i++) {
-				actServer.addParam(JDBCAdapter.TYPE_INTEGER, "Answer_SurveyID",
-						mStrSurveyId);
-				actServer.addParam(JDBCAdapter.TYPE_INTEGER,
-						"Answer_SurveyeeID", mStrUserId);
-				actServer.addParam(JDBCAdapter.TYPE_INTEGER, "Answer_StoreID",
-						mStrStoreId);
-				actServer.addParam(JDBCAdapter.TYPE_INTEGER,
-						"Answer_QuestionID", mArrLstSurCont.get(i)
-								.getmStrQuesId());
-				if (mArrLstSurCont.get(i).getmStrType().equals("9")) {
-					actServer.addParam(JDBCAdapter.TYPE_STRING, "Answer_Value",
-							"ftp://deeset\\mobileorders@81.171.198.188/mobileorders/"
-									+ mStrUsername + "-" + mStrTimestamp
-									+ "-photo.jpg");
-				} else {
-					if (mArrLstSurCont.get(i).getmStrType().equals("11")) {
+			ArrayList<ContentValues> alstResult = mDB.queryDatas(
+					DBAdapter.TABLE_RESULT, "Upload=?", new String[] { "0" });
+			if (alstResult.size() > 0) {
+				InteractServer actServer = new InteractServer(mCtx,
+						"Upload data this survey",
+						JDBCAdapter.METHOD_INSERTSURVEYANSWER, true, true);
+				ContentValues cont;
+				for (int i = 0; i < alstResult.size(); i++) {
+					cont = alstResult.get(i);
+					actServer.addParam(JDBCAdapter.TYPE_INTEGER,
+							"Answer_SurveyID", cont.getAsString("SurveyID"));
+					actServer.addParam(JDBCAdapter.TYPE_INTEGER,
+							"Answer_SurveyeeID", cont.getAsString("UserID"));
+					actServer.addParam(JDBCAdapter.TYPE_INTEGER,
+							"Answer_StoreID", cont.getAsString("StoreID"));
+					actServer.addParam(JDBCAdapter.TYPE_INTEGER,
+							"Answer_QuestionID", cont.getAsString("Question")
+									.split("@#@")[1]);
+					if (cont.getAsString("Answer").split("@#@").length > 1) {
 						actServer.addParam(JDBCAdapter.TYPE_STRING,
-								"Answer_Value",
-								"ftp://deeset\\mobileorders@81.171.198.188/mobileorders/"
-										+ mStrUsername + "-" + mStrTimestamp
-										+ "-signature.png");
+								"Answer_Value", cont.getAsString("Answer")
+										.split("@#@")[1]);
 					} else {
 						actServer.addParam(JDBCAdapter.TYPE_STRING,
-								"Answer_Value", mArrlstAnswer.get(i));
+								"Answer_Value", cont.getAsString("Answer"));
 					}
 				}
+				actServer.execute();
 			}
-			actServer.execute();
 		}
 
 		private void resizePhotoUpload() {
@@ -738,6 +716,8 @@ public class FieldSurvey extends Activity {
 					do {
 						mStrPathPhotoUpload = resizePhoto(mStrPathPhoto);
 					} while (mStrPathPhotoUpload.equals(""));
+				} else {
+					mStrPathPhotoUpload = mStrPathPhoto;
 				}
 			}
 		}
@@ -853,36 +833,70 @@ public class FieldSurvey extends Activity {
 		protected void onPostExecute(String result) {
 			mProgress.dismiss();
 			if (result.equals("fill full answers")) {
+				for (int i = 0; i < alButtonPhoto.size(); i++) {
+					if (alButtonPhoto.get(i).getAsInteger("idControl") == mIntCamareGalleryResult) {
+						hashPhoto.get(
+								alButtonPhoto.get(i).getAsInteger("idImageView"))
+								.setImageBitmap(BitmapFactory.decodeFile(mStrPathPhoto));
+					}
+				}
 				Toast.makeText(mCtx, "Please answer the questions!",
 						Toast.LENGTH_SHORT).show();
 			} else {
+				
+				String strResult;
+				do {
+					strResult = uploadFile(mStrPathSign);
+				} while (strResult.equals("fail") == true);
+
+				resizePhotoUpload();
+
+				do {
+					strResult = uploadFile(mStrPathPhotoUpload);
+				} while (strResult.equals("fail") == true);
+				
 				uploadData();
+				
+				for (int i = 0; i < alButtonPhoto.size(); i++) {
+					if (alButtonPhoto.get(i).getAsInteger("idControl") == mIntCamareGalleryResult) {
+						hashPhoto.get(
+								alButtonPhoto.get(i).getAsInteger("idImageView"))
+								.setImageBitmap(BitmapFactory.decodeFile(mStrPathPhoto));
+					}
+				}
 			}
 			super.onPostExecute(result);
 		}
 
 	}
 
-	private class InteractServer extends AsyncTask<String, Integer, String> {
+	private class InteractServer extends AsyncTask<String, Integer, Integer> {
 
 		private String mStrTitle = "";
 		private String mStrMethod = "";
-		private ArrayList<String> mAlstWS;
 
 		private Context mCtx;
 		private JDBCAdapter mJDBC;
 		private ProgressDialog proDialog;
 		private ConnectionDetector conDetect;
 
+		private ArrayList<String> mAlstWS;
 		private ArrayList<ContentValues> alstQues;
+		private boolean mBlnUpdateData = false;
+		private boolean mBlnShowProDialog = true;
+		private long longTimeExipred = 0;
 
-		public InteractServer(Context ctx, String strTitle, String strMethod) {
+		public InteractServer(Context ctx, String strTitle, String strMethod,
+				boolean blnShowProDialog, boolean blnUpdateData) {
 			mCtx = ctx;
 			mStrTitle = strTitle;
 			mStrMethod = strMethod;
 			mJDBC = new JDBCAdapter();
 			conDetect = new ConnectionDetector(mCtx);
 			mAlstWS = new ArrayList<String>();
+			mBlnShowProDialog = blnShowProDialog;
+			mBlnUpdateData = blnUpdateData;
+			proDialog = new ProgressDialog(mCtx);
 		}
 
 		public void addParam(String strType, String strName, String strValue) {
@@ -892,166 +906,246 @@ public class FieldSurvey extends Activity {
 		}
 
 		@Override
-		protected String doInBackground(String... params) {
-			if (!conDetect.isConnectingToInternet()) {
-				return "Error";
+		protected Integer doInBackground(String... params) {
+			getUpdateTime();
+			if (!mBlnUpdateData) {
+				if (querySurveyQuestions()) {
+					return JDBCAdapter.RESULT_OK;
+				}
+				return JDBCAdapter.RESULT_NOTDATA;
 			} else {
-				Log.i("params", mAlstWS.toString());
 				if (mStrMethod.equals(JDBCAdapter.METHOD_INSERTSURVEYANSWER)) {
-					return mJDBC.interactServerString(mAlstWS, mStrMethod);
-				}
-				SoapObject soap = mJDBC.interactServer(mAlstWS, mStrMethod);
-				if (soap != null) {
-					if (mStrMethod.equals(JDBCAdapter.METHOD_GETQUESTIONSDATA)) {
-						getQuestionsData(soap);
-					}
-					if (mStrMethod
-							.equals(JDBCAdapter.METHOD_GETQUESTIONOPTIONDATA)) {
-						getQuestionOptionData(soap);
-					}
-					return "Connect";
+					return mJDBC.interactServerSimple(mAlstWS, mStrMethod);
 				} else {
-					return "Inconnect";
+					SoapObject soap = mJDBC.interactServer(mAlstWS, mStrMethod);
+					if (soap != null) {
+						if (mStrMethod
+								.equals(JDBCAdapter.METHOD_GETQUESTIONSDATA)) {
+							if (soap.getPropertyCount() != 0) {
+								mDB.insertSurveyQuestions(soap, mAlstWS.get(2),
+										longTimeExipred);
+							}
+							return JDBCAdapter.RESULT_OK;
+						}
+						if (mStrMethod
+								.equals(JDBCAdapter.METHOD_GETQUESTIONOPTIONDATA)) {
+							mDB.insertQuestionAnswers(soap, mAlstWS.get(2),
+									longTimeExipred);
+							return JDBCAdapter.RESULT_OK;
+						}
+						return JDBCAdapter.RESULT_EMPTYDATA;
+					} else {
+						return JDBCAdapter.RESULT_NOTCONNECT;
+					}
 				}
 			}
 		}
 
-		private void getQuestionOptionData(SoapObject soap) {
-			int intSize = soap.getPropertyCount();
-			ContentValues content;
-			for (int i = 0; i < intSize; i++) {
-				SoapObject object = (SoapObject) soap.getProperty(i);
-				content = new ContentValues();
-				content.put("Question_Answer_Value",
-						object.getPropertyAsString("Question_Answer_Value"));
-				content.put(
-						"Question_Answer_Replacement_Value",
-						object.getPropertyAsString("Question_Answer_Replacement_Value"));
-				mAlstAnswer.add(content);
+		private void getUpdateTime() {
+			if (mBlnShowProDialog) {
+				longTimeExipred = mDB.queryTimeExpired(DBAdapter.LOG_STORE,
+						mAlstWS.get(2));
+				if (conDetect.isConnectingToInternet()
+						&& Calendar.getInstance().getTimeInMillis()
+								- longTimeExipred > JDBCAdapter.TIME_OUT) {
+					mBlnUpdateData = true;
+					Log.i("update Data", longTimeExipred + "");
+				}
 			}
 		}
 
-		private void getQuestionsData(SoapObject soap) {
-			alstQues = new ArrayList<ContentValues>();
-			int intSize = soap.getPropertyCount();
-			for (int i = 0; i < intSize; i++) {
-				ContentValues content = new ContentValues();
-				alstQues.add(content);
-			}
-			for (int i = 0; i < intSize; i++) {
-				SoapObject object = (SoapObject) soap.getProperty(i);
-				ContentValues content = new ContentValues();
-				Log.i("Question", object.toString());
-				if (Boolean.valueOf(object
-						.getPropertyAsString("Question_IsActive"))) {
-					content.clear();
-					content.put("Question_ID",
-							object.getPropertyAsString("Question_ID"));
-					content.put("Question_Name",
-							object.getPropertyAsString("Question_Name"));
-					content.put("Question_Type",
-							object.getPropertyAsString("Question_Type"));
-					content.put("Question_Title",
-							object.getPropertyAsString("Question_Title"));
-					content.put("Question_Order",
-							object.getPropertyAsString("Question_Order"));
-					content.put("Question_AnswerOption",
-							object.getPropertyAsString("Question_AnswerOption"));
-					alstQues.set(Integer.valueOf(object
-							.getPropertyAsString("Question_Order")) - 1, content);
+		private boolean querySurveyQuestions() {
+			alstQues = mDB.querySurveyQuestions(mAlstWS.get(2));
+			if (alstQues.size() <= 0) {
+				return false;
+			} else {
+				ContentValues cont;
+				String strQuestion;
+				for (int i = 0; i < alstQues.size(); i++) {
+					mAlstAnswer = new ArrayList<ContentValues>();
+					mArrLstAns = new ArrayList<String>();
+					mArrLstIdChild = new ArrayList<Integer>();
+
+					cont = alstQues.get(i);
+					loadSurveyAnswer(cont.getAsString("QuestionID"));
+					strQuestion = (i + 1) + "). " + cont.getAsString("Content");
+					createQuestions(mAtomicInt.getAndIncrement(),
+							mArrLstIdChild, strQuestion,
+							cont.getAsString("Type"),
+							cont.getAsString("QuestionID"), mArrLstAns);
 				}
+				return true;
 			}
 		}
 
 		@Override
-		protected void onPostExecute(String strResult) {
-			proDialog.dismiss();
-			if (mStrMethod.equals(JDBCAdapter.METHOD_INSERTSURVEYANSWER)) {
-				Intent intent = new Intent(mCtx, SubmittedResult.class);
-				putIntentValues(intent);
-				mCtx.startActivity(intent);
-			} else {
-				if (strResult.equals("Error")) {
-					Toast.makeText(mCtx, "Can't connect to server!",
-							Toast.LENGTH_SHORT).show();
+		protected void onPostExecute(Integer result) {
+			if (!mBlnUpdateData) {
+				if (result == JDBCAdapter.RESULT_NOTDATA) {
+					if (conDetect.isConnectingToInternet()) {
+						startUpdateSurveyQuestions(true);
+					} else {
+						GlobalInfo.showToast(mCtx,
+								JDBCAdapter.STR_NODATAOFFLINE);
+					}
 				} else {
-					if (strResult.equals("Connect")) {
+					loadQuestionViews();
+					if (conDetect.isConnectingToInternet()
+							&& Calendar.getInstance().getTimeInMillis()
+									- longTimeExipred > JDBCAdapter.TIME_UPDATE) {
+						Log.i("update Data", longTimeExipred + "");
+						startUpdateSurveyQuestions(false);
+					}
+				}
+			} else {
+				if (result == JDBCAdapter.RESULT_OK) {
+					if (mStrMethod.equals(JDBCAdapter.METHOD_GETQUESTIONSDATA)) {
+						if (mBlnShowProDialog) {
+							if (!querySurveyQuestions()) {
+								GlobalInfo.showToast(mCtx,
+										JDBCAdapter.STR_NOTLOADDATA);
+							} else {
+								loadQuestionViews();
+							}
+						}
+					}
+				} else {
+					if (result == JDBCAdapter.RESULT_EMPTYDATA) {
 						if (mStrMethod
-								.equals(JDBCAdapter.METHOD_GETQUESTIONSDATA)) {
-							initialQuestionsSurvey();
+								.equals(JDBCAdapter.METHOD_GETSTATICSURVEYDATA)) {
+							GlobalInfo.showToast(mCtx,
+									JDBCAdapter.STR_EMPTYDATA + "store "
+											+ mStrStoreName + "!");
 						}
 					} else {
-						Toast.makeText(mCtx, "Can't get data from server!",
-								Toast.LENGTH_SHORT).show();
+						GlobalInfo.showToast(mCtx, JDBCAdapter.STR_NOCONNECT);
 					}
 				}
 			}
+			proDialog.dismiss();
+		}
+
+		private void startUpdateSurveyQuestions(boolean blnShowProDialog) {
+			InteractServer actServer = new InteractServer(mCtx,
+					"Get questions data", JDBCAdapter.METHOD_GETQUESTIONSDATA,
+					blnShowProDialog, true);
+			actServer.addParam(JDBCAdapter.TYPE_INTEGER, "Question_SurveyID",
+					mStrSurveyId);
+			actServer.execute();
 		}
 
 		@Override
 		protected void onPreExecute() {
-			proDialog = new ProgressDialog(mCtx);
-			proDialog.setTitle(mStrTitle);
-			proDialog.setMessage("Processing...");
-			proDialog.setCanceledOnTouchOutside(false);
-			proDialog.setCancelable(false);
-			proDialog.show();
-		}
-
-		public void initialQuestionsSurvey() {
-			String strQuestion;
-			for (int i = 0; i < alstQues.size(); i++) {
-				mAlstAnswer = new ArrayList<ContentValues>();
-				mArrLstAns = new ArrayList<String>();
-				mArrLstIdChild = new ArrayList<Integer>();
-				ContentValues cont = alstQues.get(i);
-				if (cont.size() != 0) {
-					loadSurveyAnswer(cont.getAsString("Question_ID"));
-				} else {
-					alstQues.remove(i);
-				}
-				strQuestion = cont.getAsString("Question_Order") + "). "
-						+ cont.getAsString("Question_Title");
-				createQuestions(mAtomicInt.getAndIncrement(), mArrLstIdChild,
-						strQuestion, cont.getAsString("Question_Type"),
-						cont.getAsString("Question_ID"), mArrLstAns);
+			if (mBlnShowProDialog) {
+				proDialog.setTitle(mStrTitle);
+				proDialog.setMessage("Processing...");
+				proDialog.setCanceledOnTouchOutside(false);
+				proDialog.setCancelable(false);
+				proDialog.show();
 			}
-			loadQuestionViews();
 		}
 
 		private void loadSurveyAnswer(String strQuesId) {
-			boolean blnGetAnswer = false;
-			do {
-				blnGetAnswer = getAnswerQuestion(strQuesId);
-			} while (!blnGetAnswer);
-
+			mAlstAnswer = mDB.queryDatas(DBAdapter.TABLE_ANSWER,
+					"QuestionID = ?", new String[] { strQuesId });
+			if (mAlstAnswer.size() <= 0) {
+				InteractServer actServer = new InteractServer(mCtx,
+						"Get answer data",
+						JDBCAdapter.METHOD_GETQUESTIONOPTIONDATA, false, true);
+				actServer.addParam(JDBCAdapter.TYPE_INTEGER, "Question_ID",
+						strQuesId);
+				actServer.execute();
+				try {
+					if (actServer.get(15, TimeUnit.SECONDS).equals(
+							JDBCAdapter.RESULT_OK)) {
+						mAlstAnswer = mDB.queryDatas(DBAdapter.TABLE_ANSWER,
+								"QuestionID=?", new String[] { strQuesId });
+					}
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				} catch (ExecutionException e) {
+					e.printStackTrace();
+				} catch (TimeoutException e) {
+					e.printStackTrace();
+				}
+			}
 			for (int i = 0; i < mAlstAnswer.size(); i++) {
-				mArrLstAns.add(mAlstAnswer.get(i).getAsString(
-						"Question_Answer_Value"));
+				mArrLstAns.add(mAlstAnswer.get(i).getAsString("Answer"));
 				mArrLstIdChild.add(mAtomicInt.getAndIncrement());
 			}
 		}
 
-		private boolean getAnswerQuestion(String strQuesId) {
-			InteractServer actServer = new InteractServer(FieldSurvey.this,
-					"Get question option data",
-					JDBCAdapter.METHOD_GETQUESTIONOPTIONDATA);
-			actServer.addParam(JDBCAdapter.TYPE_INTEGER, "Question_ID",
-					strQuesId);
-			actServer.execute();
-			try {
-				if (actServer.get(15, TimeUnit.SECONDS).equals("Connect")) {
-					return true;
+	}
+
+	@Override
+	protected void onPause() {
+		super.onPause();
+		if (mIntCamareGalleryResult != -1) {
+			for (int i = 0; i < alButtonPhoto.size(); i++) {
+				if (alButtonPhoto.get(i).getAsInteger("idControl") == mIntCamareGalleryResult) {
+					hashPhoto.get(
+							alButtonPhoto.get(i).getAsInteger("idImageView"))
+							.setImageBitmap(null);
 				}
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			} catch (ExecutionException e) {
-				e.printStackTrace();
-			} catch (TimeoutException e) {
-				e.printStackTrace();
 			}
-			return false;
 		}
+	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		if (!mDB.isOpen()) {
+			mDB.open();
+		}
+		if (!mStrPathPhoto.equals("")) {
+			File file = new File(mStrPathPhoto);
+			if (file.exists()) {
+				for (int i = 0; i < alButtonPhoto.size(); i++) {
+					if (alButtonPhoto.get(i).getAsInteger("idControl") == mIntCamareGalleryResult) {
+						hashPhoto
+								.get(alButtonPhoto.get(i).getAsInteger(
+										"idImageView"))
+								.setImageBitmap(
+										BitmapFactory.decodeFile(mStrPathPhoto));
+					}
+				}
+			}
+		}
+	}
+
+	public int getValuePref(SharedPreferences sharedPref, String name,
+			int valrtn) {
+		return sharedPref.getInt(name, valrtn);
+	}
+
+	public void setValuePref(SharedPreferences sharedPref, String name,
+			int value) {
+		SharedPreferences.Editor editor = sharedPref.edit();
+		editor.putInt(name, value);
+		editor.commit();
+	}
+
+	@Override
+	public void onClick(View v) {
+		for (int i=0; i<alButtonPhoto.size(); i++) {
+			if (alButtonPhoto.get(i).getAsInteger("idControl") == v.getId()) {
+				if (alButtonPhoto.get(i).getAsInteger("type") == 0) {
+					mIntCamareGalleryResult = v.getId();
+					Intent cameraIntent = new Intent(
+							android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+					CAMERA_RESULT = alButtonPhoto.get(i).getAsInteger("index");
+					startActivityForResult(cameraIntent, CAMERA_RESULT);
+				} else {
+					mIntCamareGalleryResult = v.getId();
+					Intent intent = new Intent(
+							Intent.ACTION_PICK,
+							android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+					GALLERY_RESULT = alButtonPhoto.get(i).getAsInteger("index");
+					startActivityForResult(intent, GALLERY_RESULT);
+				}
+			}
+		}
+		
 
 	}
 
